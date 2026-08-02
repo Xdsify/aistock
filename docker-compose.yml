@@ -1,0 +1,214 @@
+version: "3.8"
+
+# ============================================
+# AI全自动炒股系统 - Docker Compose
+# ============================================
+
+services:
+  # ========== 基础设施 ==========
+
+  postgres:
+    image: timescale/timescaledb:latest-pg16
+    container_name: aistock-postgres
+    environment:
+      POSTGRES_DB: aistock
+      POSTGRES_USER: aistock
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aistock"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: aistock-redis
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ========== 业务服务 ==========
+
+  data-service:
+    build: ./services/data-service
+    container_name: aistock-data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      TUSHARE_TOKEN: ${TUSHARE_TOKEN}
+    volumes:
+      - ./services/data-service/src:/app/src
+    restart: unless-stopped
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8001 --reload
+
+  strategy-engine:
+    build: ./services/strategy-engine
+    container_name: aistock-strategy
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      data-service:
+        condition: service_started
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+    volumes:
+      - ./services/strategy-engine/src:/app/src
+      - ./strategies:/app/user_strategies
+    restart: unless-stopped
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8002 --reload
+
+  ai-service:
+    build: ./services/ai-service
+    container_name: aistock-ai
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      DATABASE_URL: ${DATABASE_URL}
+      AI_CONFIDENCE_THRESHOLD: ${AI_CONFIDENCE_THRESHOLD:-0.6}
+      AI_DAILY_TOKEN_BUDGET: ${AI_DAILY_TOKEN_BUDGET:-1000000}
+      AI_MAX_RPM: ${AI_MAX_RPM:-30}
+    volumes:
+      - ./services/ai-service/src:/app/src
+    restart: unless-stopped
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8003 --reload
+
+  risk-manager:
+    build: ./services/risk-manager
+    container_name: aistock-risk
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      MAX_SINGLE_STOCK_PCT: ${MAX_SINGLE_STOCK_PCT:-0.20}
+      MAX_SECTOR_PCT: ${MAX_SECTOR_PCT:-0.40}
+      DAILY_LOSS_LIMIT_PCT: ${DAILY_LOSS_LIMIT_PCT:-0.05}
+      MAX_DRAWDOWN_PCT: ${MAX_DRAWDOWN_PCT:-0.08}
+    volumes:
+      - ./services/risk-manager/src:/app/src
+    restart: unless-stopped
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8004 --reload
+
+  execution-engine:
+    build: ./services/execution-engine
+    container_name: aistock-execution
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      BROKER_BRIDGE_URL: broker-bridge:50051
+    volumes:
+      - ./services/execution-engine:/app
+    restart: unless-stopped
+    command: go run cmd/server/main.go
+
+  broker-bridge:
+    build: ./services/broker-bridge
+    container_name: aistock-broker
+    depends_on:
+      - redis
+    environment:
+      REDIS_URL: ${REDIS_URL}
+      XTQUANT_PATH: ${XTQUANT_PATH:-/app/miniqmt}
+      BROKER_ACCOUNT: ${BROKER_ACCOUNT}
+      BROKER_PASSWORD: ${BROKER_PASSWORD}
+    volumes:
+      - ./services/broker-bridge/src:/app/src
+    restart: unless-stopped
+    command: python src/main.py
+    # 注意: 此容器需要特殊网络配置才能访问Windows宿主上的miniQMT
+
+  api-gateway:
+    build: ./services/api-gateway
+    container_name: aistock-gateway
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"   # REST API
+      - "8081:8081"   # WebSocket
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      JWT_SECRET: ${JWT_SECRET}
+    volumes:
+      - ./services/api-gateway:/app
+    restart: unless-stopped
+    command: go run cmd/server/main.go
+
+  frontend:
+    build: ./frontend
+    container_name: aistock-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api-gateway
+    volumes:
+      - ./frontend/src:/app/src
+    environment:
+      VITE_API_URL: http://localhost:8080
+      VITE_WS_URL: ws://localhost:8081
+    restart: unless-stopped
+
+  # ========== 监控 ==========
+
+  prometheus:
+    image: prom/prometheus
+    container_name: aistock-prometheus
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana
+    container_name: aistock-grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

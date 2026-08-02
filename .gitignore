@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+.venv/
+venv/
+*.egg
+
+# Go
+*.exe
+*.test
+*.out
+vendor/
+
+# Node
+node_modules/
+dist/
+build/
+
+# 环境变量
+.env
+.env.local
+.env.production
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Docker
+pgdata/
+redisdata/
+
+# 日志
+*.log
+logs/
+
+# 临时文件
+tmp/
+temp/
+.DS_Store
+Thumbs.db
+
+# 策略文件 (包含敏感参数)
+strategies/*.py
+!strategies/example*.py
+!strategies/__init__.py

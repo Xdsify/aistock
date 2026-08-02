@@ -1,0 +1,14 @@
+fastapi==0.110.0
+uvicorn[standard]==0.27.1
+asyncpg==0.29.0
+sqlalchemy[asyncio]==2.0.25
+redis==5.0.1
+pandas>=2.2.0
+numpy>=1.26.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+python-dotenv==1.0.0
+loguru==0.7.2
+# vnpy (需要单独安装，此处仅标注)
+# vnpy>=3.8.0
+ta-lib==0.4.28

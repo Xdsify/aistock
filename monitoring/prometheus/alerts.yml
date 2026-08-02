@@ -1,0 +1,50 @@
+groups:
+  - name: trading_alerts
+    rules:
+      - alert: DailyLossWarning
+        expr: atrading_pnl_daily < -3
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "日亏损超过3%"
+
+      - alert: DailyLossCritical
+        expr: atrading_pnl_daily < -5
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "日亏损超过5%,触发自动熔断"
+
+      - alert: ServiceDown
+        expr: up == 0
+        for: 30s
+        labels:
+          severity: critical
+        annotations:
+          summary: "服务 {{ $labels.instance }} 不可用"
+
+      - alert: HighAIUsage
+        expr: atrading_ai_cost_daily > 0.8
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "AI API使用量超过预算的80%"
+
+      - alert: UnusualOrderRate
+        expr: rate(atrading_orders_total[5m]) > 10
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "异常订单频率"
+
+      - alert: PositionLimitExceeded
+        expr: atrading_positions_value / atrading_total_equity > 0.2
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "单股仓位超过20%上限"

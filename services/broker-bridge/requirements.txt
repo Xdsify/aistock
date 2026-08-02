@@ -1,0 +1,8 @@
+grpcio==1.60.1
+grpcio-tools==1.60.1
+redis==5.0.1
+protobuf==4.25.2
+python-dotenv==1.0.0
+loguru==0.7.2
+# xtquant (miniQMT需要Windows环境，仅在Windows上安装)
+# vnpy (券商网关)
