@@ -3,7 +3,7 @@ import json
 import uuid
 from datetime import datetime
 from typing import Optional
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from loguru import logger
 import redis.asyncio as aioredis
@@ -56,6 +56,12 @@ class BacktestRequest(BaseModel):
     strategy: str
     symbol: str = "000001.SZ"
     initial_capital: float = 100000.0
+
+
+class SignalRejectRequest(BaseModel):
+    signal_id: str
+    symbol: str
+    strategy_name: str = ""
 
 
 @router.get("/list")
@@ -166,6 +172,36 @@ async def backtest(req: BacktestRequest):
         return run_backtest(req.strategy, records, req.initial_capital, req.symbol)
     except ValueError as e:
         raise HTTPException(400, str(e))
+
+
+@router.get("/signal/list")
+async def list_signals(limit: int = Query(default=50, le=100)):
+    """获取信号历史 (Redis signal:list)"""
+    r = await _get_redis()
+    items = await r.lrange("signal:list", 0, limit - 1)
+    signals = []
+    for item in items:
+        try:
+            signals.append(json.loads(item))
+        except Exception:
+            continue
+    return {"signals": signals, "count": len(signals)}
+
+
+@router.post("/signal/reject")
+async def reject_signal(req: SignalRejectRequest):
+    """拒绝信号: 写入 Redis 抑制策略重发同一信号 (TTL 1天)"""
+    r = await _get_redis()
+    key = f"signal:rejected:{req.symbol}:{req.strategy_name or 'any'}"
+    await r.setex(key, 86400, "1")
+    await r.publish("signal:reject", json.dumps({
+        "signal_id": req.signal_id,
+        "symbol": req.symbol,
+        "strategy_name": req.strategy_name,
+        "timestamp": datetime.now().isoformat(),
+    }))
+    logger.info(f"信号已拒绝: {req.symbol} {req.strategy_name} id={req.signal_id}")
+    return {"success": True, "message": f"已拒绝 {req.symbol} 的信号"}
 
 
 @router.post("/signal/approve")

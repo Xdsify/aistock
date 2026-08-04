@@ -187,7 +187,11 @@ class SignalPipeline:
         return True  # 风控服务不可达时默认通过(安全偏向)
 
     async def _publish_signal(self, signal: SignalData):
-        """发布信号到Redis"""
+        """发布信号到Redis (被用户拒绝过的信号跳过不重发)"""
+        rejected_key = f"signal:rejected:{signal.symbol}:{signal.strategy_name or 'any'}"
+        if await self.redis.exists(rejected_key):
+            logger.info(f"信号已被拒绝, 跳过发布: {signal.symbol}")
+            return
         signal_data = {
             "signal_id": signal.signal_id,
             "strategy_name": signal.strategy_name,

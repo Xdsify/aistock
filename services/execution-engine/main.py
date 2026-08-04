@@ -33,6 +33,7 @@ INITIAL_CAPITAL = 500000.0
 positions: dict[str, dict] = {}
 orders: dict[str, dict] = {}
 signals_log: list[dict] = []
+trades: list = []  # 已实现成交记录 (供胜率/盈亏比统计)
 
 # ============ 初始化 ============
 async def init():
@@ -56,6 +57,14 @@ async def init():
         if data:
             pos = json.loads(data)
             positions[pos["symbol"]] = pos
+
+    # 加载已有成交记录
+    items = await rdb.lrange("trade:list", 0, -1)
+    for it in items:
+        try:
+            trades.append(json.loads(it))
+        except Exception:
+            continue
 
     # 订阅信号频道
     asyncio.create_task(subscribe_signals())
@@ -169,6 +178,20 @@ async def execute_signal(signal: dict) -> dict:
         cash += (price * volume - commission - stamp_tax)
     await rdb.set("account:available_cash", str(round(cash, 2)))
 
+    # 记录卖出成交 (已实现盈亏, 供胜率/盈亏比统计)
+    if action == "SELL":
+        pos = positions.get(symbol, {})
+        realized = volume * (price - pos.get("avg_cost", 0))
+        trade = {
+            "time": datetime.now().isoformat()[:19],
+            "symbol": symbol, "action": "SELL",
+            "price": price, "volume": volume,
+            "pnl": round(realized, 2),
+        }
+        trades.append(trade)
+        await rdb.lpush("trade:list", json.dumps(trade))
+        await rdb.ltrim("trade:list", 0, 199)
+
     # 更新持仓
     await update_position(symbol, action, price, volume)
 
@@ -234,6 +257,11 @@ async def recalculate_equity():
     pnl_daily.set(round(pnl, 2))
     positions_value.set(round(sum(p.get("market_value", 0) for p in positions.values()), 2))
 
+    # 权益历史快照 (供前端权益曲线)
+    snapshot = {"time": datetime.now().isoformat()[:19], "value": round(equity, 2)}
+    await rdb.lpush("equity:history", json.dumps(snapshot))
+    await rdb.ltrim("equity:history", 0, 499)
+
 
 # ============ REST API ============
 @asynccontextmanager
@@ -290,6 +318,42 @@ async def get_orders():
 @app.get("/api/signals")
 async def get_signals():
     return signals_log[-50:]
+
+
+@app.get("/api/equity-history")
+async def get_equity_history(limit: int = 300):
+    """权益历史曲线点 (Redis equity:history, 最新在前)"""
+    items = await rdb.lrange("equity:history", 0, max(limit - 1, 0))
+    points = []
+    for it in items:
+        try:
+            points.append(json.loads(it))
+        except Exception:
+            continue
+    points.reverse()  # 时间从旧到新
+    return {"points": points, "count": len(points)}
+
+
+@app.get("/api/stats")
+async def get_stats():
+    """交易统计: 胜率 / 盈亏比 (基于已实现成交)"""
+    sells = [t for t in trades if t.get("action") == "SELL"]
+    wins = 0
+    gross_profit = 0.0
+    gross_loss = 0.0
+    for t in sells:
+        pnl = t.get("pnl", 0)
+        if pnl > 0:
+            wins += 1
+            gross_profit += pnl
+        else:
+            gross_loss += abs(pnl)
+    return {
+        "win_rate": round(wins / max(len(sells), 1) * 100, 1),
+        "profit_factor": round(gross_profit / gross_loss, 2)
+        if gross_loss > 0 else (999.0 if gross_profit > 0 else 0.0),
+        "trades_count": len(sells),
+    }
 
 
 @app.post("/api/order/manual")
