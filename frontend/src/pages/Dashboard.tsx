@@ -213,7 +213,16 @@ function MarketSentimentCard({ sentiment }: { sentiment: any }) {
 
 function RecentSignalsCard() {
   const allSignals = useSignalStore((s) => s.signals);
+  const setSignals = useSignalStore((s) => s.setSignals);
   const signals = allSignals.slice(0, 5);
+
+  // 挂载时拉取信号历史, 刷新不丢
+  useEffect(() => {
+    fetch('/api/signals')
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.signals?.length) setSignals(d.signals); })
+      .catch(() => {});
+  }, [setSignals]);
 
   return (
     <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
