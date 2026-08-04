@@ -79,6 +79,7 @@ func (h *Hub) subscribeRedis() {
 	ctx := context.Background()
 	pubsub := h.rdb.PSubscribe(ctx,
 		"market:quote",
+		"market:sentiment",
 		"order:update",
 		"position:update",
 		"signal:new",

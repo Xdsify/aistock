@@ -2,6 +2,8 @@ FROM golang:1.22-alpine AS builder
 
 WORKDIR /app
 
+ENV GOPROXY=https://goproxy.cn,direct
+
 RUN apk add --no-cache git
 
 COPY go.mod ./
