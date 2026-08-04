@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ShoppingCart, Send, Clock } from 'lucide-react';
 import { useMarketStore } from '../stores/marketStore';
+import { useStockNames } from '../hooks/useStockNames';
 
 function isTradingTime(now: Date): boolean {
   const day = now.getDay(); // 0=周日
@@ -18,7 +19,9 @@ export default function ManualTrade() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const quotes = useMarketStore((s) => s.quotes);
+  const stockNames = useStockNames();
   const livePrice = quotes[symbol]?.price;
+  const stockName = stockNames[symbol] || '';
   const trading = isTradingTime(new Date());
 
   async function submit(e: React.FormEvent) {
@@ -38,6 +41,7 @@ export default function ManualTrade() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           symbol,
+          name: stockName,
           action,
           price: p,
           volume: volume ? parseInt(volume, 10) : 0,
@@ -80,6 +84,11 @@ export default function ManualTrade() {
             className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-500"
             placeholder="如 000001.SZ / 600519.SH"
           />
+          {stockName && (
+            <div className="text-xs text-gray-300 mt-1">
+              股票: <span className="text-white">{stockName}</span>
+            </div>
+          )}
         </div>
 
         <div>

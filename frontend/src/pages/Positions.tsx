@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, Lock, Unlock } from 'lucide-react';
 import { usePositionStore } from '../stores/positionStore';
+import { useStockNames } from '../hooks/useStockNames';
 
 interface Position {
   symbol: string;
   name?: string;
+  live?: boolean;
   total_qty: number;
   available_sell: number;
   locked_qty: number;
@@ -23,6 +25,7 @@ export default function Positions() {
   const [loading, setLoading] = useState(true);
   const setStorePositions = usePositionStore((s) => s.setPositions);
   const setAccount = usePositionStore((s) => s.setAccount);
+  const stockNames = useStockNames();
 
   useEffect(() => {
     // 从执行引擎获取真实持仓和账户数据
@@ -95,7 +98,7 @@ export default function Positions() {
             {positions.map((pos) => (
               <tr key={pos.symbol} className="border-b border-gray-800 hover:bg-gray-800/50">
                 <td className="p-3">
-                  <div className="font-medium">{pos.name || pos.symbol}</div>
+                  <div className="font-medium">{pos.name || stockNames[pos.symbol] || pos.symbol}</div>
                   <div className="text-xs text-gray-500">{pos.symbol}</div>
                 </td>
                 <td className="p-3 text-right">
@@ -103,7 +106,12 @@ export default function Positions() {
                   <div className="text-xs text-gray-500">可用 {pos.available_sell.toLocaleString()}</div>
                 </td>
                 <td className="p-3 text-right font-mono text-sm">{pos.avg_cost.toFixed(2)}</td>
-                <td className="p-3 text-right font-mono text-sm">{pos.current_price.toFixed(2)}</td>
+                <td className="p-3 text-right font-mono text-sm">
+                  {pos.current_price.toFixed(2)}
+                  {pos.live === false && (
+                    <div className="text-[10px] text-gray-600 font-normal" title="无实时行情，以买入价计">以买入价计</div>
+                  )}
+                </td>
                 <td className="p-3 text-right font-mono text-sm">{pos.market_value.toLocaleString()}</td>
                 <td className={`p-3 text-right font-mono text-sm ${pos.unrealized_pnl >= 0 ? 'text-up' : 'text-down'}`}>
                   {pos.unrealized_pnl >= 0 ? '+' : ''}{pos.unrealized_pnl.toLocaleString()}

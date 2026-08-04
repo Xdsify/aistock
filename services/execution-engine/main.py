@@ -211,7 +211,7 @@ async def execute_signal(signal: dict) -> dict:
         await rdb.ltrim("trade:list", 0, 199)
 
     # 更新持仓
-    await update_position(symbol, action, price, volume)
+    await update_position(symbol, action, price, volume, signal.get("name", ""))
 
     # 发布更新
     await rdb.publish("order:update", json.dumps(order))
@@ -223,13 +223,15 @@ async def execute_signal(signal: dict) -> dict:
     return {"success": True, "order_id": order_id}
 
 
-async def update_position(symbol: str, action: str, price: float, volume: int):
+async def update_position(symbol: str, action: str, price: float, volume: int, name: str = ""):
     """更新持仓 + T+1锁定"""
     pos = positions.get(symbol, {
-        "symbol": symbol, "total_qty": 0, "available_sell": 0,
+        "symbol": symbol, "name": name or symbol, "total_qty": 0, "available_sell": 0,
         "locked_qty": 0, "avg_cost": 0, "realized_pnl": 0,
         "current_price": 0, "market_value": 0, "unrealized_pnl": 0,
     })
+    if name:
+        pos["name"] = name
 
     if action == "BUY":
         old_value = pos["total_qty"] * pos["avg_cost"]
@@ -259,9 +261,13 @@ async def update_position(symbol: str, action: str, price: float, volume: int):
 
 
 async def recalculate_equity():
-    """重算总资产"""
+    """重算总资产 (优先用实时价, 无则用买入价)"""
     cash = float(await rdb.get("account:available_cash") or 0)
-    market_value = sum(p.get("market_value", 0) for p in positions.values())
+    market_value = 0
+    for symbol, pos in positions.items():
+        live = await _live_price(symbol)
+        price = live if live else pos.get("current_price", 0)
+        market_value += pos.get("total_qty", 0) * price
     equity = cash + market_value
     await rdb.set("account:total_equity", str(round(equity, 2)))
 
@@ -273,7 +279,7 @@ async def recalculate_equity():
     # Prometheus 指标
     total_equity.set(round(equity, 2))
     pnl_daily.set(round(pnl, 2))
-    positions_value.set(round(sum(p.get("market_value", 0) for p in positions.values()), 2))
+    positions_value.set(round(market_value, 2))
 
     # 权益历史快照 (供前端权益曲线)
     snapshot = {"time": datetime.now().isoformat()[:19], "value": round(equity, 2)}
@@ -323,9 +329,31 @@ async def get_account():
     }
 
 
+async def _live_price(symbol: str):
+    """从 Redis 实时行情 (data-service 盘中写入) 取最新价, 无则 None"""
+    try:
+        data = await rdb.get(f"market:realtime:{symbol}")
+        if data:
+            price = float(json.loads(data).get("price", 0))
+            return price if price > 0 else None
+    except Exception:
+        pass
+    return None
+
+
 @app.get("/api/positions")
 async def get_positions():
-    return list(positions.values())
+    result = []
+    for symbol, pos in positions.items():
+        p = dict(pos)
+        live = await _live_price(symbol)
+        p["live"] = bool(live)  # 现价是否来自实时行情 (False=以买入价计)
+        if live:
+            p["current_price"] = live
+            p["market_value"] = round(pos.get("total_qty", 0) * live, 2)
+            p["unrealized_pnl"] = round(pos.get("total_qty", 0) * (live - pos.get("avg_cost", 0)), 2)
+        result.append(p)
+    return result
 
 
 @app.get("/api/orders")
@@ -379,6 +407,7 @@ async def manual_order(req: dict):
     """手动下单"""
     signal = {
         "symbol": req["symbol"],
+        "name": req.get("name", ""),
         "action": req["action"].upper(),
         "price": req["price"],
         "volume": req.get("volume", 0),
