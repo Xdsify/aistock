@@ -2,7 +2,9 @@
 import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.responses import Response
 from loguru import logger
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from .config import settings
 from .storage.database import init_db, close_db
@@ -48,3 +50,9 @@ app.include_router(router, prefix="/api/data")
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "data-service"}
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus 指标"""
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

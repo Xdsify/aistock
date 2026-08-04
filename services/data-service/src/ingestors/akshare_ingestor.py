@@ -31,7 +31,7 @@ class AKShareIngestor:
         self, symbol: str, start_date: str, end_date: str,
         adjust: str = "qfq"
     ) -> Optional[pd.DataFrame]:
-        """获取日线K线数据
+        """获取日线K线数据 (同步AKShare调用放在线程池执行)
 
         Args:
             symbol: 股票代码 (如 '000001')
@@ -39,6 +39,15 @@ class AKShareIngestor:
             end_date: 截止日期 'YYYYMMDD'
             adjust: 复权类型 qfq(前复权)/hfq(后复权)/None(不复权)
         """
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None, self._sync_get_kline_raw, symbol, start_date, end_date, adjust
+        )
+
+    def _sync_get_kline_raw(
+        self, symbol: str, start_date: str, end_date: str, adjust: str = "qfq"
+    ) -> Optional[pd.DataFrame]:
+        """同步获取日线K线 (线程安全,不碰Redis)"""
         try:
             import akshare as ak
             df = ak.stock_zh_a_hist(
@@ -237,7 +246,10 @@ class AKShareIngestor:
     # ======== 纯同步方法 (供run_in_executor在线程中调用,不涉及Redis) ========
 
     def _sync_get_sentiment_raw(self) -> dict:
-        """同步获取市场情绪原始数据 (线程安全,不碰Redis)"""
+        """同步获取市场情绪原始数据 (线程安全,不碰Redis)
+
+        组合: 上证指数日线(趋势) + 全市场实时宽度指标(涨跌家数/涨跌停/平均涨跌幅)
+        """
         import akshare as ak
         import pandas as pd
 
@@ -251,15 +263,60 @@ class AKShareIngestor:
         position_20d = round((close - low20) / (high20 - low20) * 100, 1) if high20 != low20 else 50
         avg_vol_20 = float(df.tail(20)["volume"].mean())
 
-        return {
+        result = {
             "sh_index": round(close, 2),
             "sh_change_pct": round(close / float(prev["close"]) * 100 - 100, 2),
             "position_20d": position_20d,
             "vol_ratio": round(float(latest["volume"]) / avg_vol_20, 2) if avg_vol_20 > 0 else 1.0,
             "trend": "强势" if position_20d > 60 else ("弱势" if position_20d < 40 else "震荡"),
             "recent5_up_days": int((recent5["close"] > recent5["open"]).sum()),
-            "source": "上证指数日线",
+            "source": "上证指数日线 + 全市场实时",
         }
+
+        # 全市场宽度指标 (前端 Dashboard 依赖这些字段)
+        try:
+            spot = ak.stock_zh_a_spot_em()
+            chg = pd.to_numeric(spot["涨跌幅"], errors="coerce").fillna(0)
+            up = int((chg > 0).sum())
+            down = int((chg < 0).sum())
+            result["advance_decline_ratio"] = round(up / max(down, 1), 2)
+            result["limit_up_count"] = int((chg >= 9.9).sum())
+            result["limit_down_count"] = int((chg <= -9.9).sum())
+            result["avg_change_pct"] = round(float(chg.mean()), 2)
+        except Exception as e:
+            logger.warning(f"市场宽度指标获取失败: {e}")
+            result["advance_decline_ratio"] = 0.0
+            result["limit_up_count"] = 0
+            result["limit_down_count"] = 0
+            result["avg_change_pct"] = 0.0
+
+        return result
+
+    def _sync_get_spot_map(self) -> dict:
+        """同步拉取全市场实时行情 (线程安全,不碰Redis), 返回 {code: quote}"""
+        import akshare as ak
+
+        df = ak.stock_zh_a_spot_em()
+        result = {}
+        for _, row in df.iterrows():
+            try:
+                code = str(row["代码"]).strip()
+                result[code] = {
+                    "name": row["名称"],
+                    "price": float(row["最新价"]),
+                    "change_pct": float(row["涨跌幅"]),
+                    "change": float(row["涨跌额"]),
+                    "volume": float(row["成交量"]),
+                    "amount": float(row["成交额"]),
+                    "high": float(row["最高"]),
+                    "low": float(row["最低"]),
+                    "open": float(row["今开"]),
+                    "pre_close": float(row["昨收"]),
+                    "turnover_rate": float(row.get("换手率", 0)),
+                }
+            except Exception:
+                continue  # 跳过停牌/数据异常的行
+        return result
 
     def _sync_get_quote_raw(self, symbol: str) -> dict:
         """同步获取单只股票行情 (线程安全,不碰Redis)"""
