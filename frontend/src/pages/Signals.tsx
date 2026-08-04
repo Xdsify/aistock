@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Zap, Check, X, Eye, Brain } from 'lucide-react';
 import { useSignalStore } from '../stores/signalStore';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -6,8 +6,17 @@ import { useWebSocket } from '../hooks/useWebSocket';
 export default function Signals() {
   useWebSocket();
   const signals = useSignalStore((s) => s.signals);
+  const setSignals = useSignalStore((s) => s.setSignals);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [filter, setFilter] = useState<'ALL' | 'BUY' | 'SELL'>('ALL');
+
+  // 挂载时拉取信号历史 (Redis signal:list), 刷新不丢
+  useEffect(() => {
+    fetch('/api/signals')
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => { if (d?.signals?.length) setSignals(d.signals); })
+      .catch(() => {});
+  }, [setSignals]);
 
   const filteredSignals = filter === 'ALL'
     ? signals
@@ -61,6 +70,8 @@ function SignalCard({
 }: {
   signal: any; isExpanded: boolean; onToggle: () => void;
 }) {
+  const approveSignal = useSignalStore((s) => s.approveSignal);
+  const rejectSignal = useSignalStore((s) => s.rejectSignal);
   const isBuy = signal.action === 'BUY';
 
   return (
@@ -117,18 +128,32 @@ function SignalCard({
           <div className="flex gap-1">
             {signal.requires_confirmation && (
               <>
-                <button className="p-1.5 bg-green-600/80 hover:bg-green-600 rounded-lg"
+                <button className="p-1.5 bg-green-600/80 hover:bg-green-600 rounded-lg" title="批准并下单"
                   onClick={async () => {
                     try {
                       const res = await fetch('/api/signals/approve', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({signal}) });
                       const data = await res.json();
-                      alert(data.message || '信号已批准, 发送到执行引擎');
+                      if (res.ok) {
+                        approveSignal(signal.signal_id);
+                        alert(data.message || '信号已批准, 发送到执行引擎');
+                      } else {
+                        alert(data.detail || data.message || '批准失败');
+                      }
                     } catch(e) { alert('请求失败: ' + (e as Error).message); }
                   }}>
                   <Check className="w-4 h-4" />
                 </button>
-                <button className="p-1.5 bg-red-600/80 hover:bg-red-600 rounded-lg"
-                  onClick={() => alert('信号已拒绝')}>
+                <button className="p-1.5 bg-red-600/80 hover:bg-red-600 rounded-lg" title="拒绝信号"
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('/api/signals/reject', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({signal_id: signal.signal_id, symbol: signal.symbol, strategy_name: signal.strategy_name}) });
+                      if (res.ok) {
+                        rejectSignal(signal.signal_id);
+                      } else {
+                        alert('拒绝失败: ' + res.status);
+                      }
+                    } catch(e) { alert('请求失败: ' + (e as Error).message); }
+                  }}>
                   <X className="w-4 h-4" />
                 </button>
               </>

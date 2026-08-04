@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, Lock, Unlock } from 'lucide-react';
+import { usePositionStore } from '../stores/positionStore';
 
 interface Position {
   symbol: string;
@@ -20,6 +21,8 @@ export default function Positions() {
   const [totalEquity, setTotalEquity] = useState(500000);
   const [availableCash, setAvailableCash] = useState(350000);
   const [loading, setLoading] = useState(true);
+  const setStorePositions = usePositionStore((s) => s.setPositions);
+  const setAccount = usePositionStore((s) => s.setAccount);
 
   useEffect(() => {
     // 从执行引擎获取真实持仓和账户数据
@@ -31,12 +34,15 @@ export default function Positions() {
         ]);
         if (posRes.ok) {
           const posData = await posRes.json();
-          setPositions(Array.isArray(posData) ? posData : []);
+          const list = Array.isArray(posData) ? posData : [];
+          setPositions(list);
+          setStorePositions(list); // 同步到全局 store (状态栏等使用)
         }
         if (acctRes.ok) {
           const acctData = await acctRes.json();
           setTotalEquity(acctData.total_equity || 500000);
           setAvailableCash(acctData.available_cash || 0);
+          setAccount(acctData);
         }
       } catch (e) {
         console.error('获取持仓失败:', e);
@@ -46,7 +52,7 @@ export default function Positions() {
     fetchData();
     const t = setInterval(fetchData, 5000);
     return () => clearInterval(t);
-  }, []);
+  }, [setStorePositions, setAccount]);
 
   const totalMarketValue = positions.reduce((s, p) => s + (p.market_value || 0), 0);
   const totalUnrealizedPnL = positions.reduce((s, p) => s + (p.unrealized_pnl || 0), 0);

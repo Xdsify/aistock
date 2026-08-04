@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { createChart, ColorType } from 'lightweight-charts';
 
-// 用确定性的种子生成模拟历史数据（不会每次刷新变化）
+// 兜底数据: 当执行引擎没有真实权益历史时使用 (确定性生成, 不会每次刷新变化)
 function stableEquityData() {
   const data = [];
   const startDate = new Date('2026-01-01');
   let equity = 470000;
-  // 固定波动序列
   const changes = [
     1200, -800, 2100, -500, 3200, -1200, 800, 2400, -1500, 1800,
     -600, 3100, -2000, 900, 2600, -1100, 1400, -700, 3500, -1800,
@@ -18,44 +17,35 @@ function stableEquityData() {
     -900, 600, 1900, -300, 2400, -700, 1000, 1600, -400, 3000,
     -1300, 300, 2000, -650, 1100, -350, 2500, -850, 450, 2150,
     -550, 650, 1750, -250, 2300, -450, 350, 1950, -150, 2850,
-    -1050, 250, 2050, -750, 550, 1650, -650, 400, 2350, -350,
-    -200, 1550, -850, 450, 2200, -550, 300, 1900, -450, 100,
   ];
 
   for (let i = 0; i < changes.length; i++) {
     const date = new Date(startDate.getTime() + i * 24 * 60 * 60 * 1000);
     equity += changes[i];
     equity = Math.max(equity, 450000);
-
     data.push({
       time: date.toISOString().split('T')[0],
       value: Math.round(equity * 100) / 100,
     });
   }
-
-  // 末尾追加今天的数据点（从实际账户获取）
-  const today = new Date().toISOString().split('T')[0];
-  const lastDate = data[data.length - 1].time;
-  if (today !== lastDate) {
-    data.push({
-      time: today,
-      value: data[data.length - 1].value,
-    });
-  }
-
   return data;
 }
 
 export default function EquityChart() {
   const chartContainerRef = useRef<HTMLDivElement>(null);
-  const [latestEquity, setLatestEquity] = useState<number | null>(null);
+  const [points, setPoints] = useState<any[] | null>(null);
 
-  // 从执行引擎获取真实权益
+  // 从执行引擎拉取真实权益历史
   useEffect(() => {
-    fetch('/api/account')
-      .then(r => r.json())
-      .then(d => {
-        if (d.total_equity) setLatestEquity(d.total_equity);
+    fetch('/api/equity-history')
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => {
+        if (d?.points?.length) {
+          setPoints(d.points.map((p: any) => ({
+            time: Math.floor(new Date(p.time).getTime() / 1000),
+            value: p.value,
+          })));
+        }
       })
       .catch(() => {});
   }, []);
@@ -87,19 +77,8 @@ export default function EquityChart() {
       lineWidth: 2,
     });
 
-    const data = stableEquityData();
-
-    // 如果有实时权益，更新最后一个点
-    if (latestEquity) {
-      const today = new Date().toISOString().split('T')[0];
-      const lastIdx = data.findIndex(d => d.time === today);
-      if (lastIdx >= 0) {
-        data[lastIdx] = { time: today, value: latestEquity };
-      } else {
-        data.push({ time: today, value: latestEquity });
-      }
-    }
-
+    // 有真实数据用真实, 否则用兜底
+    const data = points && points.length >= 2 ? points : stableEquityData();
     areaSeries.setData(data);
     chart.timeScale().fitContent();
 
@@ -114,7 +93,7 @@ export default function EquityChart() {
       window.removeEventListener('resize', handleResize);
       chart.remove();
     };
-  }, [latestEquity]);
+  }, [points]);
 
   return <div ref={chartContainerRef} />;
 }

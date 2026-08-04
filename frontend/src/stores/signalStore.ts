@@ -22,9 +22,9 @@ interface Signal {
 interface SignalState {
   signals: Signal[];
   addSignal: (signal: Signal) => void;
+  setSignals: (signals: Signal[]) => void;
   approveSignal: (signalId: string) => void;
   rejectSignal: (signalId: string) => void;
-  clearSignals: () => void;
 }
 
 export const useSignalStore = create<SignalState>((set) => ({
@@ -35,6 +35,9 @@ export const useSignalStore = create<SignalState>((set) => ({
       signals: [signal, ...state.signals].slice(0, 50),
     })),
 
+  setSignals: (signals) =>
+    set({ signals: signals.slice(0, 50) }),
+
   approveSignal: (signalId) =>
     set((state) => ({
       signals: state.signals.filter((s) => s.signal_id !== signalId),
@@ -44,6 +47,4 @@ export const useSignalStore = create<SignalState>((set) => ({
     set((state) => ({
       signals: state.signals.filter((s) => s.signal_id !== signalId),
     })),
-
-  clearSignals: () => set({ signals: [] }),
 }));

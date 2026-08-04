@@ -5,9 +5,10 @@ interface PnLCardProps {
   totalPnLPct: number;
   winRate: number;
   profitFactor: number;
+  positionPct?: number;
 }
 
-export default function PnLCard({ totalPnL, totalPnLPct, winRate, profitFactor }: PnLCardProps) {
+export default function PnLCard({ totalPnL, totalPnLPct, winRate, profitFactor, positionPct = 0 }: PnLCardProps) {
   return (
     <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 space-y-4">
       <div>
@@ -41,10 +42,10 @@ export default function PnLCard({ totalPnL, totalPnLPct, winRate, profitFactor }
       <div>
         <div className="flex justify-between text-xs mb-1">
           <span className="text-gray-400">仓位占比</span>
-          <span>35%</span>
+          <span>{positionPct}%</span>
         </div>
         <div className="w-full bg-gray-800 rounded-full h-2">
-          <div className="bg-blue-500 h-2 rounded-full" style={{ width: '35%' }} />
+          <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${Math.min(positionPct, 100)}%` }} />
         </div>
       </div>
     </div>

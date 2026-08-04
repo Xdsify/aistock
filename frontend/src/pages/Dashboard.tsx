@@ -17,9 +17,13 @@ export default function Dashboard() {
   const signals = useSignalStore((s) => s.signals);
 
   const [accountData, setAccountData] = useState<any>(null);
+  const [stats, setStats] = useState<any>(null);
 
-  // 从执行引擎获取真实账户数据 + 市场情绪兜底 (WS 不可用时走 REST)
+  // 从执行引擎获取真实账户数据 + 交易统计 + 市场情绪兜底 (WS 不可用时走 REST)
   useEffect(() => {
+    const fetchStats = () => {
+      fetch('/api/stats').then(r => r.ok ? r.json() : null).then(d => d && setStats(d)).catch(() => {});
+    };
     fetch('/api/account')
       .then(r => r.json())
       .then(d => setAccountData(d))
@@ -28,6 +32,7 @@ export default function Dashboard() {
       .then(r => r.json())
       .then(d => { if (d.sentiment) updateSentiment(d.sentiment); })
       .catch(() => {});
+    fetchStats();
     // 每5秒刷新
     const t = setInterval(() => {
       fetch('/api/account').then(r => r.json()).then(d => setAccountData(d)).catch(() => {});
@@ -35,6 +40,7 @@ export default function Dashboard() {
         .then(r => r.json())
         .then(d => { if (d.sentiment) updateSentiment(d.sentiment); })
         .catch(() => {});
+      fetchStats();
     }, 5000);
     return () => clearInterval(t);
   }, [updateSentiment]);
@@ -46,6 +52,7 @@ export default function Dashboard() {
   const positionList = Object.values(positions);
   const totalMarketValue = positionList.reduce((sum: number, p: any) => sum + (p.market_value || 0), 0);
   const totalUnrealizedPnL = positionList.reduce((sum: number, p: any) => sum + (p.unrealized_pnl || 0), 0);
+  const positionPct = totalEquity > 0 ? Math.round(totalMarketValue / totalEquity * 100) : 0;
 
   return (
     <div className="p-6 space-y-6">
@@ -103,16 +110,49 @@ export default function Dashboard() {
           <PnLCard
             totalPnL={totalPnl}
             totalPnLPct={totalPnlPct}
-            winRate={0}
-            profitFactor={0}
+            winRate={stats?.win_rate ?? 0}
+            profitFactor={stats?.profit_factor ?? 0}
+            positionPct={positionPct}
           />
         </div>
       </div>
+
+      {/* 实时行情条 */}
+      <QuotesBar />
 
       {/* 市场情绪 + 最近信号 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <MarketSentimentCard sentiment={sentiment} />
         <RecentSignalsCard />
+      </div>
+    </div>
+  );
+}
+
+function QuotesBar() {
+  const quotes = useMarketStore((s) => s.quotes);
+  const list = Object.values(quotes).slice(0, 12);
+
+  if (list.length === 0) {
+    return (
+      <div className="bg-gray-900 rounded-xl border border-gray-800 p-4 text-sm text-gray-500">
+        实时行情: 等待行情数据...(需 AKShare 网络可达)
+      </div>
+    );
+  }
+  return (
+    <div className="bg-gray-900 rounded-xl border border-gray-800 p-4">
+      <h3 className="text-sm font-semibold mb-3 text-gray-400">实时行情</h3>
+      <div className="flex gap-3 overflow-x-auto">
+        {list.map((q: any) => (
+          <div key={q.symbol} className="min-w-[110px] bg-gray-800 rounded-lg p-2 shrink-0">
+            <div className="text-xs text-gray-400 truncate">{q.name || q.symbol}</div>
+            <div className="font-mono text-sm">{q.price}</div>
+            <div className={`text-xs ${q.change_pct >= 0 ? 'text-up' : 'text-down'}`}>
+              {q.change_pct >= 0 ? '+' : ''}{q.change_pct}%
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

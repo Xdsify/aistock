@@ -1,11 +1,8 @@
 import { useState } from 'react';
-import { Save, Key, Server, Bell, Shield, CheckCircle } from 'lucide-react';
+import { Save, Shield, Bell, CheckCircle, Info } from 'lucide-react';
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState({
-    deepseekApiKey: '',
-    brokerAccount: '',
-    tushareToken: '',
     maxSingleStock: 20,
     maxSector: 40,
     dailyLossLimit: 5,
@@ -23,7 +20,6 @@ export default function SettingsPage() {
     setSaving(true);
     setSaved(false);
     try {
-      // 保存到后端 (通过环境变量配置更新 — 实际生产环境需要安全API)
       const res = await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -38,6 +34,8 @@ export default function SettingsPage() {
       if (res.ok) {
         setSaved(true);
         setTimeout(() => setSaved(false), 3000);
+      } else {
+        alert('保存失败: HTTP ' + res.status);
       }
     } catch (e) {
       console.error('保存设置失败:', e);
@@ -50,53 +48,51 @@ export default function SettingsPage() {
     <div className="p-6 space-y-6 max-w-2xl">
       <h1 className="text-2xl font-bold">系统设置</h1>
 
-      {/* API配置 */}
-      <Section title="API配置" icon={Key}>
-        <FormField label="DeepSeek API Key" type="password"
-          value={settings.deepseekApiKey}
-          onChange={(v) => updateSetting('deepseekApiKey', v)}
-          placeholder="sk-..." />
-        <FormField label="Tushare Token" type="password"
-          value={settings.tushareToken}
-          onChange={(v) => updateSetting('tushareToken', v)}
-          placeholder="输入Tushare token" />
-      </Section>
-
-      {/* 券商配置 */}
-      <Section title="券商配置" icon={Server}>
-        <FormField label="华泰账户"
-          value={settings.brokerAccount}
-          onChange={(v) => updateSetting('brokerAccount', v)}
-          placeholder="输入证券公司账号" />
-        <FormField label="交易密码" type="password"
-          value=""
-          onChange={() => {}}
-          placeholder="输入交易密码" />
-      </Section>
+      {/* 外部配置说明 */}
+      <div className="bg-gray-900 rounded-xl border border-gray-800 p-5">
+        <h3 className="font-semibold mb-3 flex items-center gap-2 text-blue-400">
+          <Info className="w-4 h-4" /> 外部配置说明
+        </h3>
+        <p className="text-sm text-gray-400 leading-relaxed">
+          DeepSeek API Key、Tushare Token、券商账号/密码等通过项目根目录的{' '}
+          <code className="text-blue-300 bg-gray-800 px-1.5 py-0.5 rounded">.env</code>{' '}
+          文件配置，修改后需重启对应服务生效。此处仅提供运行期可调整的风控与 AI 参数。
+        </p>
+      </div>
 
       {/* 风控参数 */}
       <Section title="风控参数" icon={Shield}>
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="单股仓位上限(%)" type="number"
+          <FormField
+            label="单股仓位上限(%)" type="number"
             value={settings.maxSingleStock}
-            onChange={(v) => updateSetting('maxSingleStock', Number(v))} />
-          <FormField label="单行业仓位上限(%)" type="number"
+            onChange={(v) => updateSetting('maxSingleStock', Number(v))}
+          />
+          <FormField
+            label="单行业仓位上限(%)" type="number"
             value={settings.maxSector}
-            onChange={(v) => updateSetting('maxSector', Number(v))} />
-          <FormField label="日亏损上限(%)" type="number"
+            onChange={(v) => updateSetting('maxSector', Number(v))}
+          />
+          <FormField
+            label="日亏损上限(%)" type="number"
             value={settings.dailyLossLimit}
-            onChange={(v) => updateSetting('dailyLossLimit', Number(v))} />
-          <FormField label="最大回撤(%)" type="number"
+            onChange={(v) => updateSetting('dailyLossLimit', Number(v))}
+          />
+          <FormField
+            label="最大回撤(%)" type="number"
             value={settings.maxDrawdown}
-            onChange={(v) => updateSetting('maxDrawdown', Number(v))} />
+            onChange={(v) => updateSetting('maxDrawdown', Number(v))}
+          />
         </div>
       </Section>
 
       {/* AI参数 */}
       <Section title="AI参数" icon={Bell}>
-        <FormField label="信号置信度阈值(%)" type="number"
+        <FormField
+          label="信号置信度阈值(%)" type="number"
           value={settings.aiConfidenceThreshold}
-          onChange={(v) => updateSetting('aiConfidenceThreshold', Number(v))} />
+          onChange={(v) => updateSetting('aiConfidenceThreshold', Number(v))}
+        />
         <div className="text-xs text-gray-500">
           AI置信度低于此阈值的信号将自动拒绝
         </div>

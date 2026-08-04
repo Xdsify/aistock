@@ -2,6 +2,8 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useMarketStore } from '../stores/marketStore';
 import { usePositionStore } from '../stores/positionStore';
 import { useSignalStore } from '../stores/signalStore';
+import { useConnectionStore } from '../stores/connectionStore';
+import { useToastStore } from '../stores/toastStore';
 
 type MessageHandler = (channel: string, data: any) => void;
 
@@ -11,9 +13,9 @@ export function useWebSocket() {
   const updateQuote = useMarketStore((s) => s.updateQuote);
   const updateSentiment = useMarketStore((s) => s.updateSentiment);
   const updatePosition = usePositionStore((s) => s.updatePosition);
-  const setPositions = usePositionStore((s) => s.setPositions);
-  const setAccount = usePositionStore((s) => s.setAccount);
   const addSignal = useSignalStore((s) => s.addSignal);
+  const setConnected = useConnectionStore((s) => s.setConnected);
+  const pushToast = useToastStore((s) => s.push);
 
   const connect = useCallback(() => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -24,6 +26,7 @@ export function useWebSocket() {
 
     ws.onopen = () => {
       console.log('WebSocket已连接');
+      setConnected(true);
       // 订阅所有频道
       ws.send(JSON.stringify({ type: 'subscribe', channel: 'market:quote' }));
       ws.send(JSON.stringify({ type: 'subscribe', channel: 'order:update' }));
@@ -43,11 +46,13 @@ export function useWebSocket() {
 
     ws.onclose = () => {
       console.log('WebSocket断开, 5秒后重连');
+      setConnected(false);
       reconnectTimeoutRef.current = window.setTimeout(connect, 5000);
     };
 
     ws.onerror = (err) => {
       console.error('WebSocket错误:', err);
+      setConnected(false);
       ws.close();
     };
   }, []);
@@ -67,8 +72,7 @@ export function useWebSocket() {
         addSignal(data);
         break;
       case 'risk:alert':
-        // TODO: 显示风险通知
-        console.warn('风险告警:', data);
+        pushToast(data?.level === 'CRITICAL' ? 'error' : 'warning', `风控告警: ${data?.message || JSON.stringify(data)}`);
         break;
     }
   };

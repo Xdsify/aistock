@@ -8,6 +8,8 @@ import { useWebSocket } from './hooks/useWebSocket';
 import { usePositionStore } from './stores/positionStore';
 import { useMarketStore } from './stores/marketStore';
 import { useSignalStore } from './stores/signalStore';
+import { useConnectionStore } from './stores/connectionStore';
+import ToastContainer from './components/Toast';
 
 // Pages
 import Dashboard from './pages/Dashboard';
@@ -30,6 +32,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-black text-white">
+      <ToastContainer />
       {/* 侧边栏 */}
       <nav className="w-56 bg-gray-950 border-r border-gray-800 flex flex-col shrink-0">
         <div className="p-4 border-b border-gray-800">
@@ -88,7 +91,7 @@ function NavItem({ to, end, icon: Icon, label }: {
 function StatusBar() {
   // 检测 WebSocket 和服务状态
   const account = usePositionStore((s) => s.account);
-  const wsConnected = true; // TODO: 从 useWebSocket 返回连接状态
+  const wsConnected = useConnectionStore((s) => s.connected);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
