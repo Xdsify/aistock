@@ -42,7 +42,6 @@ test: ## 运行所有测试
 	@echo "运行风控测试..."
 	cd services/risk-manager && pytest tests/ -v
 	@echo "运行Go测试..."
-	cd services/execution-engine && go test ./...
 	cd services/api-gateway && go test ./...
 
 dev: ## 开发模式 (仅启动基础设施)

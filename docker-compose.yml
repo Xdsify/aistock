@@ -52,8 +52,8 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
+      DATABASE_URL: postgresql://aistock:${DB_PASSWORD}@postgres:5432/aistock
+      REDIS_URL: redis://redis:6379
       TUSHARE_TOKEN: ${TUSHARE_TOKEN}
     volumes:
       - ./services/data-service/src:/app/src
@@ -71,8 +71,8 @@ services:
       data-service:
         condition: service_started
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
+      DATABASE_URL: postgresql://aistock:${DB_PASSWORD}@postgres:5432/aistock
+      REDIS_URL: redis://redis:6379
     volumes:
       - ./services/strategy-engine/src:/app/src
       - ./strategies:/app/user_strategies
@@ -88,8 +88,8 @@ services:
     environment:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       DEEPSEEK_BASE_URL: ${DEEPSEEK_BASE_URL}
-      REDIS_URL: ${REDIS_URL}
-      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://aistock:${DB_PASSWORD}@postgres:5432/aistock
       AI_CONFIDENCE_THRESHOLD: ${AI_CONFIDENCE_THRESHOLD:-0.6}
       AI_DAILY_TOKEN_BUDGET: ${AI_DAILY_TOKEN_BUDGET:-1000000}
       AI_MAX_RPM: ${AI_MAX_RPM:-30}
@@ -107,8 +107,8 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
+      DATABASE_URL: postgresql://aistock:${DB_PASSWORD}@postgres:5432/aistock
+      REDIS_URL: redis://redis:6379
       MAX_SINGLE_STOCK_PCT: ${MAX_SINGLE_STOCK_PCT:-0.20}
       MAX_SECTOR_PCT: ${MAX_SECTOR_PCT:-0.40}
       DAILY_LOSS_LIMIT_PCT: ${DAILY_LOSS_LIMIT_PCT:-0.05}
@@ -127,13 +127,12 @@ services:
       redis:
         condition: service_healthy
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
-      BROKER_BRIDGE_URL: broker-bridge:50051
+      DATABASE_URL: postgresql://aistock:${DB_PASSWORD}@postgres:5432/aistock
+      REDIS_URL: redis://redis:6379
     volumes:
       - ./services/execution-engine:/app
     restart: unless-stopped
-    command: go run cmd/server/main.go
+    command: python main.py
 
   broker-bridge:
     build: ./services/broker-bridge
@@ -141,7 +140,7 @@ services:
     depends_on:
       - redis
     environment:
-      REDIS_URL: ${REDIS_URL}
+      REDIS_URL: redis://redis:6379
       XTQUANT_PATH: ${XTQUANT_PATH:-/app/miniqmt}
       BROKER_ACCOUNT: ${BROKER_ACCOUNT}
       BROKER_PASSWORD: ${BROKER_PASSWORD}
@@ -163,13 +162,12 @@ services:
       - "8080:8080"   # REST API
       - "8081:8081"   # WebSocket
     environment:
-      DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
+      DATABASE_URL: postgresql://aistock:${DB_PASSWORD}@postgres:5432/aistock
+      REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET}
-    volumes:
-      - ./services/api-gateway:/app
     restart: unless-stopped
-    command: go run cmd/server/main.go
+    # 直接运行镜像内编译好的二进制 (go run 需要运行时含Go工具链, 生产镜像不含)
+    command: api-gateway
 
   frontend:
     build: ./frontend
@@ -192,6 +190,7 @@ services:
     container_name: aistock-prometheus
     volumes:
       - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml
     ports:
       - "9090:9090"
     restart: unless-stopped
@@ -206,7 +205,30 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
     volumes:
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards
+    restart: unless-stopped
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: aistock-pg-exporter
+    depends_on:
+      - postgres
+    environment:
+      DATA_SOURCE_NAME: "postgresql://aistock:${DB_PASSWORD}@postgres:5432/aistock?sslmode=disable"
+    ports:
+      - "9187:9187"
+    restart: unless-stopped
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: aistock-redis-exporter
+    depends_on:
+      - redis
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    ports:
+      - "9121:9121"
     restart: unless-stopped
 
 volumes:

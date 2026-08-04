@@ -21,10 +21,30 @@ scrape_configs:
       - targets: ['execution-engine:9001']
     metrics_path: /metrics
 
+  - job_name: 'data-service'
+    static_configs:
+      - targets: ['data-service:8001']
+    metrics_path: /metrics
+
+  - job_name: 'strategy-engine'
+    static_configs:
+      - targets: ['strategy-engine:8002']
+    metrics_path: /metrics
+
+  - job_name: 'ai-service'
+    static_configs:
+      - targets: ['ai-service:8003']
+    metrics_path: /metrics
+
+  - job_name: 'risk-manager'
+    static_configs:
+      - targets: ['risk-manager:8004']
+    metrics_path: /metrics
+
   - job_name: 'postgres'
     static_configs:
-      - targets: ['postgres:9187']
+      - targets: ['postgres-exporter:9187']
 
   - job_name: 'redis'
     static_configs:
-      - targets: ['redis:9121']
+      - targets: ['redis-exporter:9121']
