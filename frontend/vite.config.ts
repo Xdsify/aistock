@@ -62,6 +62,16 @@ export default defineConfig({
         target: 'http://localhost:9001',
         changeOrigin: true,
       },
+      // 系统设置 → api-gateway (写 Redis settings:*)
+      '/api/settings': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
+      // 登录 → api-gateway (JWT)
+      '/api/auth': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
       // 信号相关 → strategy-engine
       '/api/signals': {
         target: 'http://localhost:8002',

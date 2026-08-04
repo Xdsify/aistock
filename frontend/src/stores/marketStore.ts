@@ -22,6 +22,14 @@ interface MarketState {
     limit_up_count: number;
     limit_down_count: number;
     avg_change_pct: number;
+    sh_index?: number;
+    sh_change_pct?: number;
+    sz_change_pct?: number;
+    cy_change_pct?: number;
+    vol_ratio?: number;
+    position_20d?: number;
+    trend?: string;
+    recent5_up_days?: number;
   } | null;
   updateQuote: (quote: Quote) => void;
   updateSentiment: (data: any) => void;

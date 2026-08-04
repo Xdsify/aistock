@@ -9,6 +9,7 @@ export function useWebSocket() {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<number>(undefined);
   const updateQuote = useMarketStore((s) => s.updateQuote);
+  const updateSentiment = useMarketStore((s) => s.updateSentiment);
   const updatePosition = usePositionStore((s) => s.updatePosition);
   const setPositions = usePositionStore((s) => s.setPositions);
   const setAccount = usePositionStore((s) => s.setAccount);
@@ -55,6 +56,9 @@ export function useWebSocket() {
     switch (channel) {
       case 'market:quote':
         updateQuote(data);
+        break;
+      case 'market:sentiment':
+        updateSentiment(data);
         break;
       case 'position:update':
         updatePosition(data);

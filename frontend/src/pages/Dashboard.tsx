@@ -13,22 +13,31 @@ export default function Dashboard() {
   const account = usePositionStore((s) => s.account);
   const positions = usePositionStore((s) => s.positions);
   const sentiment = useMarketStore((s) => s.sentiment);
+  const updateSentiment = useMarketStore((s) => s.updateSentiment);
   const signals = useSignalStore((s) => s.signals);
 
   const [accountData, setAccountData] = useState<any>(null);
 
-  // 从执行引擎获取真实账户数据
+  // 从执行引擎获取真实账户数据 + 市场情绪兜底 (WS 不可用时走 REST)
   useEffect(() => {
     fetch('/api/account')
       .then(r => r.json())
       .then(d => setAccountData(d))
       .catch(() => {});
+    fetch('/api/data/market/sentiment')
+      .then(r => r.json())
+      .then(d => { if (d.sentiment) updateSentiment(d.sentiment); })
+      .catch(() => {});
     // 每5秒刷新
     const t = setInterval(() => {
       fetch('/api/account').then(r => r.json()).then(d => setAccountData(d)).catch(() => {});
+      fetch('/api/data/market/sentiment')
+        .then(r => r.json())
+        .then(d => { if (d.sentiment) updateSentiment(d.sentiment); })
+        .catch(() => {});
     }, 5000);
     return () => clearInterval(t);
-  }, []);
+  }, [updateSentiment]);
 
   const totalEquity = accountData?.total_equity ?? account?.total_equity ?? 500000;
   const totalPnl = accountData?.total_pnl ?? 0;

@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import { Routes, Route, NavLink } from 'react-router-dom';
 import {
   Activity, ShieldAlert, Settings, Briefcase,
-  Zap, BarChart3, Brain, Wifi, WifiOff
+  Zap, BarChart3, Brain, Wifi, WifiOff, LogOut
 } from 'lucide-react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { usePositionStore } from './stores/positionStore';
@@ -16,10 +17,16 @@ import Positions from './pages/Positions';
 import Signals from './pages/Signals';
 import Strategies from './pages/Strategies';
 import AIScreener from './pages/AIScreener';
+import LoginPage from './pages/Login';
 
 export default function App() {
+  const [token, setToken] = useState<string | null>(() => localStorage.getItem('token'));
   // 全局 WebSocket 连接
   useWebSocket();
+
+  if (!token) {
+    return <LoginPage onLogin={() => setToken(localStorage.getItem('token'))} />;
+  }
 
   return (
     <div className="flex h-screen bg-black text-white">
@@ -83,6 +90,11 @@ function StatusBar() {
   const account = usePositionStore((s) => s.account);
   const wsConnected = true; // TODO: 从 useWebSocket 返回连接状态
 
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    window.location.reload();
+  };
+
   return (
     <div className="p-3 border-t border-gray-800 space-y-2 text-xs">
       <div className="flex items-center gap-2 text-gray-500">
@@ -98,6 +110,12 @@ function StatusBar() {
           资产: <span className="text-white">¥{account.total_equity?.toLocaleString() || '---'}</span>
         </div>
       )}
+      <button
+        onClick={handleLogout}
+        className="w-full flex items-center gap-2 text-gray-500 hover:text-white transition-colors"
+      >
+        <LogOut className="w-3 h-3" /> 退出登录
+      </button>
     </div>
   );
 }
