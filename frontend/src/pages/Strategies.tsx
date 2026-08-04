@@ -5,6 +5,7 @@ interface StrategyInfo {
   name: string;
   author: string;
   description: string;
+  source?: string;
   params: Record<string, number | boolean>;
 }
 
@@ -28,6 +29,7 @@ export default function Strategies() {
   const [loading, setLoading] = useState(true);
   const [testSymbol, setTestSymbol] = useState('000001.SZ');
   const [testing, setTesting] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
     refresh();
@@ -126,7 +128,7 @@ export default function Strategies() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">策略管理</h1>
         <button className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm flex items-center gap-1"
-          onClick={() => alert('策略自定义请参考 strategies/ 目录模板')}>
+          onClick={() => setShowCreate(true)}>
           <Plus className="w-4 h-4" /> 新建策略
         </button>
       </div>
@@ -149,6 +151,9 @@ export default function Strategies() {
                     <span className="text-xs text-gray-500 bg-gray-800 px-2 py-0.5 rounded">
                       {CATEGORY_LABELS[s.name] || '策略'}
                     </span>
+                    {s.source === 'user' && (
+                      <span className="text-xs bg-purple-900/40 text-purple-300 px-2 py-0.5 rounded">自定义</span>
+                    )}
                   </div>
                   <p className="text-sm text-gray-400 mb-3">{s.description || '(无描述)'}</p>
 
@@ -210,6 +215,112 @@ export default function Strategies() {
             {testing ? '测试中...' : '测试信号'}
           </button>
         </div>
+      </div>
+
+      <CreateStrategyModal
+        open={showCreate}
+        onClose={() => setShowCreate(false)}
+        onCreate={refresh}
+      />
+    </div>
+  );
+}
+
+function CreateStrategyModal({ open, onClose, onCreate }: { open: boolean; onClose: () => void; onCreate: () => void }) {
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [code, setCode] = useState('');
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  if (!open) return null;
+
+  const fillExample = () => {
+    setCode(`# 例: 双均线金叉买入 (更多参考 strategies/example_ma_cross.py)
+if len(self.bars) < 21:
+    return None
+fast = self.am.latest(self.am.sma(5))
+slow = self.am.latest(self.am.sma(20))
+prev_fast = self.am.sma(5)[-2]
+prev_slow = self.am.sma(20)[-2]
+if prev_fast <= prev_slow and fast > slow and self.pos == 0:
+    return self.generate_signal(Action.BUY, bar, 0.8, f"金叉: MA5({fast:.2f})>MA20({slow:.2f})")
+return None`);
+  };
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch('/api/strategy/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, description, code }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        onCreate();
+        setName(''); setDescription(''); setCode('');
+        onClose();
+      } else {
+        setError(data.detail || '创建失败: ' + res.status);
+      }
+    } catch (e) {
+      setError('请求失败，检查后端是否运行');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
+      <div
+        className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-[640px] max-w-[92vw] max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-bold mb-4">新建自定义策略</h2>
+        <form onSubmit={submit} className="space-y-4">
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">策略名（英文/下划线，不能数字开头）</label>
+            <input
+              value={name} onChange={(e) => setName(e.target.value)}
+              placeholder="如 my_strategy"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm text-gray-400 mb-1">描述</label>
+            <input
+              value={description} onChange={(e) => setDescription(e.target.value)}
+              placeholder="策略说明"
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm text-gray-400">on_bar 函数体（Python）</label>
+              <button type="button" onClick={fillExample} className="text-xs text-blue-400 hover:underline">
+                插入示例
+              </button>
+            </div>
+            <textarea
+              value={code} onChange={(e) => setCode(e.target.value)} rows={12}
+              className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:border-blue-500"
+              placeholder={'# 写 on_bar 逻辑，返回 SignalData 或 None\n# 可用: self.bars / self.am.sma.ema.rsi.macd / self.pos / bar.close 等'}
+            />
+          </div>
+          {error && <p className="text-sm text-red-400">{error}</p>}
+          <div className="flex gap-3">
+            <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-sm">
+              取消
+            </button>
+            <button type="submit" disabled={saving}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-lg text-sm font-bold">
+              {saving ? '创建中...' : '创建策略'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

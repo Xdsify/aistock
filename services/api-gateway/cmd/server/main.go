@@ -86,6 +86,7 @@ func main() {
 	api.Use("/signals", authRequired)
 	api.Use("/strategy/activate", authRequired)
 	api.Use("/strategy/deactivate", authRequired)
+	api.Use("/strategy/create", authRequired)
 	api.Use("/strategy/signal", authRequired)
 	api.Use("/risk/circuit-breaker", authRequired)
 
@@ -109,6 +110,7 @@ func main() {
 	api.Post("/strategy/deactivate", proxyHandler("http://strategy-engine:8002/api/strategy/deactivate"))
 	api.Post("/strategy/test-signal", proxyHandler("http://strategy-engine:8002/api/strategy/test-signal"))
 	api.Post("/strategy/backtest", proxyHandler("http://strategy-engine:8002/api/strategy/backtest"))
+	api.Post("/strategy/create", proxyHandler("http://strategy-engine:8002/api/strategy/create"))
 	api.Post("/strategy/signal/approve", proxyHandler("http://strategy-engine:8002/api/strategy/signal/approve"))
 	api.Post("/strategy/signal/quick-buy", proxyHandler("http://strategy-engine:8002/api/strategy/signal/quick-buy"))
 

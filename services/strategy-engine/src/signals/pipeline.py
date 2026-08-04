@@ -9,7 +9,7 @@ import httpx
 from ..config import settings
 from ..metrics import signals_total
 from ..strategies.base import BarData, SignalData, Action
-from ..strategies.examples import BUILTIN_STRATEGIES
+from ..strategies.registry import get_all_strategies
 
 
 class SignalPipeline:
@@ -26,8 +26,8 @@ class SignalPipeline:
         for name in strategy_names:
             if name in self.active_strategies:
                 continue
-            if name in BUILTIN_STRATEGIES:
-                strategy_class = BUILTIN_STRATEGIES[name]
+            if name in get_all_strategies():
+                strategy_class = get_all_strategies()[name]
                 strategy = strategy_class()
                 strategy.on_init()
                 self.active_strategies[name] = strategy

@@ -12,6 +12,7 @@ import redis.asyncio as aioredis
 from .config import settings
 from .api import router
 from .signals.pipeline import SignalPipeline
+from .strategies.registry import load_user_strategies
 
 # 默认监控列表 (与 data-service 保持一致)
 DEFAULT_WATCHLIST = [
@@ -98,6 +99,9 @@ async def strategy_loop():
 async def lifespan(app: FastAPI):
     logger.info("策略引擎启动中...")
     global redis, pipeline
+
+    # 加载用户自定义策略
+    load_user_strategies()
 
     redis = aioredis.from_url(settings.redis_url, encoding="utf-8", decode_responses=True)
     await redis.ping()

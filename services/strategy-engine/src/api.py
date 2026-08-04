@@ -10,7 +10,7 @@ from loguru import logger
 import redis.asyncio as aioredis
 
 from .config import settings
-from .strategies.examples import BUILTIN_STRATEGIES
+from .strategies.registry import get_all_strategies, save_user_strategy, USER_STRATEGIES
 from .strategies.base import BarData, Action
 
 router = APIRouter()
@@ -76,13 +76,14 @@ def _is_trading_time() -> bool:
 
 @router.get("/list")
 async def list_strategies():
-    """列出所有可用策略"""
+    """列出所有可用策略 (内置 + 用户自定义)"""
     strategies = []
-    for name, cls in BUILTIN_STRATEGIES.items():
+    for name, cls in get_all_strategies().items():
         strategies.append({
             "name": name,
             "author": cls.author,
-            "description": cls.__doc__ or "",
+            "description": getattr(cls, "description", None) or cls.__doc__ or "",
+            "source": "user" if name in USER_STRATEGIES else "builtin",
             "params": {
                 "max_position_pct": cls.max_position_pct,
                 "stop_loss_pct": cls.stop_loss_pct,
@@ -94,6 +95,31 @@ async def list_strategies():
     return {"strategies": strategies}
 
 
+class CreateStrategyRequest(BaseModel):
+    name: str
+    description: str = ""
+    code: str  # on_bar 函数体
+
+
+@router.post("/create")
+async def create_strategy(req: CreateStrategyRequest):
+    """新建用户自定义策略 (提供 on_bar 函数体)"""
+    import re
+    name = req.name.strip()
+    if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_]*$", name):
+        raise HTTPException(400, "策略名只能包含字母/数字/下划线(且不能以数字开头)")
+    if name in get_all_strategies():
+        raise HTTPException(400, f"策略名已存在: {name}")
+    if not req.code.strip():
+        raise HTTPException(400, "策略代码不能为空")
+    try:
+        path = save_user_strategy(name, req.description, req.code)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    logger.info(f"新策略已创建: {name}")
+    return {"success": True, "strategy": name, "path": path}
+
+
 @router.get("/active")
 async def list_active():
     """列出当前激活的策略 (从 Redis 读取)"""
@@ -101,7 +127,7 @@ async def list_active():
     names = await r.smembers("strategy:active")
     strategies = []
     for name in names:
-        cls = BUILTIN_STRATEGIES.get(name)
+        cls = get_all_strategies().get(name)
         if not cls:
             continue
         strategies.append({
@@ -122,7 +148,7 @@ async def list_active():
 @router.post("/activate")
 async def activate_strategy(config: StrategyConfig):
     """激活策略 (持久化到 Redis, 后台策略循环会加载)"""
-    if config.name not in BUILTIN_STRATEGIES:
+    if config.name not in get_all_strategies():
         raise HTTPException(404, f"策略不存在: {config.name}")
     r = await _get_redis()
     await r.sadd("strategy:active", config.name)
@@ -147,7 +173,7 @@ async def test_signal(bar: BarInput):
         close=bar.close, volume=bar.volume, amount=bar.amount,
     )
     signals = []
-    for name, strategy_class in BUILTIN_STRATEGIES.items():
+    for name, strategy_class in get_all_strategies().items():
         strategy = strategy_class()
         strategy.on_init()
         strategy.update_bar(bar_data)
@@ -167,7 +193,7 @@ async def test_signal(bar: BarInput):
 @router.post("/backtest")
 async def backtest(req: BacktestRequest):
     """运行策略回测 (基于 Redis kline:daily:{symbol} 历史K线)"""
-    if req.strategy not in BUILTIN_STRATEGIES:
+    if req.strategy not in get_all_strategies():
         raise HTTPException(404, f"策略不存在: {req.strategy}")
     r = await _get_redis()
     data = await r.get(f"kline:daily:{req.symbol}")

@@ -1,7 +1,7 @@
 """回测引擎 - 基于历史K线模拟策略收益"""
 from datetime import datetime
 from .strategies.base import BarData, Action
-from .strategies.examples import BUILTIN_STRATEGIES
+from .strategies.registry import get_all_strategies
 
 COMMISSION_RATE = 0.00025   # 佣金 万2.5
 STAMP_TAX_RATE = 0.001      # 印花税 千1 (仅卖出)
@@ -41,7 +41,7 @@ def run_backtest(
 
     策略的 self.pos 与回测持仓同步, 保证 buy/sell 状态机正确。
     """
-    strategy_class = BUILTIN_STRATEGIES.get(strategy_name)
+    strategy_class = get_all_strategies().get(strategy_name)
     if strategy_class is None:
         raise ValueError(f"策略不存在: {strategy_name}")
 
