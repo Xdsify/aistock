@@ -9,6 +9,7 @@ pydantic==2.5.3
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
 loguru==0.7.2
+prometheus-client==0.20.0
+httpx==0.26.0
 # vnpy (需要单独安装，此处仅标注)
 # vnpy>=3.8.0
-ta-lib==0.4.28

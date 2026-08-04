@@ -52,6 +52,12 @@ class QuickBuyRequest(BaseModel):
     reason: str = ""
 
 
+class BacktestRequest(BaseModel):
+    strategy: str
+    symbol: str = "000001.SZ"
+    initial_capital: float = 100000.0
+
+
 @router.get("/list")
 async def list_strategies():
     """列出所有可用策略"""
@@ -74,16 +80,47 @@ async def list_strategies():
 
 @router.get("/active")
 async def list_active():
-    """列出当前激活的策略"""
-    return {"active": []}
+    """列出当前激活的策略 (从 Redis 读取)"""
+    r = await _get_redis()
+    names = await r.smembers("strategy:active")
+    strategies = []
+    for name in names:
+        cls = BUILTIN_STRATEGIES.get(name)
+        if not cls:
+            continue
+        strategies.append({
+            "name": name,
+            "author": cls.author,
+            "description": cls.__doc__ or "",
+            "params": {
+                "max_position_pct": cls.max_position_pct,
+                "stop_loss_pct": cls.stop_loss_pct,
+                "take_profit_pct": cls.take_profit_pct,
+                "requires_ai": cls.requires_ai,
+                "requires_confirmation": cls.requires_confirmation,
+            },
+        })
+    return {"active": strategies}
 
 
 @router.post("/activate")
 async def activate_strategy(config: StrategyConfig):
-    """激活策略"""
+    """激活策略 (持久化到 Redis, 后台策略循环会加载)"""
     if config.name not in BUILTIN_STRATEGIES:
         raise HTTPException(404, f"策略不存在: {config.name}")
+    r = await _get_redis()
+    await r.sadd("strategy:active", config.name)
+    logger.info(f"策略已激活: {config.name}")
     return {"success": True, "strategy": config.name}
+
+
+@router.post("/deactivate")
+async def deactivate_strategy(name: str):
+    """停用策略"""
+    r = await _get_redis()
+    await r.srem("strategy:active", name)
+    logger.info(f"策略已停用: {name}")
+    return {"success": True, "strategy": name}
 
 
 @router.post("/test-signal")
@@ -109,6 +146,26 @@ async def test_signal(bar: BarInput):
                 "reason": signal.reason,
             })
     return {"symbol": bar.symbol, "signals": signals, "count": len(signals)}
+
+
+@router.post("/backtest")
+async def backtest(req: BacktestRequest):
+    """运行策略回测 (基于 Redis kline:daily:{symbol} 历史K线)"""
+    if req.strategy not in BUILTIN_STRATEGIES:
+        raise HTTPException(404, f"策略不存在: {req.strategy}")
+    r = await _get_redis()
+    data = await r.get(f"kline:daily:{req.symbol}")
+    if not data:
+        raise HTTPException(400, f"缺少 {req.symbol} 的K线数据(请先让 data-service 采集)")
+    try:
+        records = json.loads(data)
+    except Exception:
+        raise HTTPException(500, "K线数据格式错误")
+    from .backtest import run_backtest
+    try:
+        return run_backtest(req.strategy, records, req.initial_capital, req.symbol)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
 
 @router.post("/signal/approve")

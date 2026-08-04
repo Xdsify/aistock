@@ -2,10 +2,9 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ libpq-dev && \
-    rm -rf /var/lib/apt/lists/*
+ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
+# 依赖均为预编译 wheel, 无需 gcc/libpq
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 

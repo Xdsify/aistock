@@ -6,6 +6,8 @@ from loguru import logger
 import redis.asyncio as aioredis
 import httpx
 
+from ..config import settings
+from ..metrics import signals_total
 from ..strategies.base import BarData, SignalData, Action
 from ..strategies.examples import BUILTIN_STRATEGIES
 
@@ -16,17 +18,62 @@ class SignalPipeline:
     def __init__(self, redis_client: aioredis.Redis):
         self.redis = redis_client
         self.active_strategies: dict[str, any] = {}  # name -> strategy instance
-        self.ai_service_url = "http://ai-service:8003/api/ai"
+        self.ai_service_url = settings.ai_service_url
+        self.risk_service_url = settings.risk_service_url
 
     async def load_strategies(self, strategy_names: list[str]):
-        """加载策略实例"""
+        """加载策略实例 (幂等: 已加载的不重建)"""
         for name in strategy_names:
+            if name in self.active_strategies:
+                continue
             if name in BUILTIN_STRATEGIES:
                 strategy_class = BUILTIN_STRATEGIES[name]
                 strategy = strategy_class()
                 strategy.on_init()
                 self.active_strategies[name] = strategy
                 logger.info(f"策略已加载: {name}")
+
+    async def sync_strategies(self, active_names: list[str]):
+        """同步激活策略: 新增未加载的, 移除已停用的"""
+        active_set = set(active_names)
+        for name in list(self.active_strategies.keys()):
+            if name not in active_set:
+                del self.active_strategies[name]
+                logger.info(f"策略已停用: {name}")
+        await self.load_strategies(active_names)
+
+    async def feed_klines(self, symbol: str, records: list[dict]) -> list[SignalData]:
+        """喂K线记录: 历史建立指标, 最后一根触发完整信号管道
+
+        records 字段: trade_date/open/high/low/close/volume/amount
+        """
+        bars = []
+        for r in records:
+            try:
+                dt_raw = r.get("trade_date")
+                if isinstance(dt_raw, str):
+                    dt_raw = datetime.fromisoformat(dt_raw) if "T" in dt_raw \
+                        else datetime.strptime(dt_raw, "%Y-%m-%d")
+                bars.append(BarData(
+                    symbol=symbol,
+                    datetime=dt_raw or datetime.now(),
+                    open=float(r.get("open", 0)),
+                    high=float(r.get("high", 0)),
+                    low=float(r.get("low", 0)),
+                    close=float(r.get("close", 0)),
+                    volume=float(r.get("volume", 0)),
+                    amount=float(r.get("amount", 0)),
+                ))
+            except Exception:
+                continue
+        if len(bars) < 2:
+            return []
+        # 历史K线只喂指标
+        for strategy in self.active_strategies.values():
+            for bar in bars[:-1]:
+                strategy.update_bar(bar)
+        # 最后一根走完整管道 (AI增强 + 风控 + 发布)
+        return await self.process_bar(bars[-1])
 
     async def process_bar(self, bar: BarData) -> list[SignalData]:
         """处理一根K线，生成并过滤信号"""
@@ -117,7 +164,7 @@ class SignalPipeline:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 response = await client.post(
-                    "http://risk-manager:8004/api/risk/pre-trade-check",
+                    f"{self.risk_service_url}/pre-trade-check",
                     json={
                         "signal": {
                             "symbol": signal.symbol,
@@ -163,3 +210,6 @@ class SignalPipeline:
         # 同时存储到列表用于Dashboard获取
         await self.redis.lpush("signal:list", json.dumps(signal_data))
         await self.redis.ltrim("signal:list", 0, 99)  # 保留最近100条
+
+        # Prometheus 指标
+        signals_total.labels(signal.action.value).inc()
