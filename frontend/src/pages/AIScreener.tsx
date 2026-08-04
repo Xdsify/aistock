@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Brain, TrendingUp, AlertTriangle, Clock, Zap, Activity } from 'lucide-react';
+import { useMarketStore } from '../stores/marketStore';
 
 interface StockPick {
   symbol: string;
@@ -25,6 +26,7 @@ export default function AIScreener() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ScreenResult | null>(null);
   const [error, setError] = useState('');
+  const quotes = useMarketStore((s) => s.quotes);
 
   const runScreen = async () => {
     setLoading(true);
@@ -44,6 +46,35 @@ export default function AIScreener() {
     }
     setLoading(false);
   };
+
+  // 一键买入: 优先用实时行情价, 没有则手动输入
+  async function quickBuy(pick: StockPick) {
+    let price = quotes[pick.symbol]?.price;
+    if (!price) {
+      const p = prompt(`请输入 ${pick.symbol} 买入价格:`, '');
+      if (!p) return;
+      price = parseFloat(p);
+    }
+    if (!price || price <= 0) {
+      alert('价格无效');
+      return;
+    }
+    try {
+      const res = await fetch('/api/strategy/signal/quick-buy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ symbol: pick.symbol, name: pick.name, price, position_pct: 0.1 }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(data.message || '买入订单已提交');
+      } else {
+        alert(data.detail || data.message || '买入失败: ' + res.status);
+      }
+    } catch (e) {
+      alert('请求失败，检查后端是否运行');
+    }
+  }
 
   const riskColor: Record<string, string> = {
     LOW: 'text-green-400', MEDIUM: 'text-yellow-400', HIGH: 'text-red-400',
@@ -196,6 +227,14 @@ export default function AIScreener() {
                   <span className="text-gray-500">AI分析: </span>
                   {pick.reason}
                 </div>
+
+                {/* 一键买入 */}
+                <button
+                  onClick={() => quickBuy(pick)}
+                  className="mt-3 w-full py-2 bg-red-600/80 hover:bg-red-600 rounded-lg text-sm font-bold transition-colors"
+                >
+                  买入 {pick.symbol}
+                </button>
               </div>
             ))}
           </div>

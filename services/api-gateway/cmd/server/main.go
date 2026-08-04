@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -331,19 +332,23 @@ func proxyRequest(c *fiber.Ctx, targetURL string) error {
 		targetURL = targetURL + sep + qs
 	}
 
-	// 创建代理请求
+	// 创建代理请求 (直接用原始字节, 避免 UTF-8 中文被破坏)
 	req, err := http.NewRequestWithContext(
 		c.Context(),
 		c.Method(),
 		targetURL,
-		io.NopCloser(strings.NewReader(string(c.Body()))),
+		bytes.NewReader(c.Body()),
 	)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "代理请求创建失败"})
 	}
 
-	// 复制请求头
+	// 复制请求头 (跳过 Content-Length/Transfer-Encoding/Host, 交给 http.Client 管理)
 	for key, vals := range c.GetReqHeaders() {
+		upper := strings.ToUpper(key)
+		if upper == "CONTENT-LENGTH" || upper == "TRANSFER-ENCODING" || upper == "HOST" {
+			continue
+		}
 		for _, val := range vals {
 			req.Header.Add(key, val)
 		}
