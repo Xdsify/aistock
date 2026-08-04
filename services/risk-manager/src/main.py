@@ -1,7 +1,9 @@
 """风控管理器 - 主入口"""
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.responses import Response
 from loguru import logger
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from .config import settings
 from .redis_client import init_redis, close_redis
@@ -36,3 +38,9 @@ app.include_router(router, prefix="/api/risk")
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "risk-manager"}
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus 指标"""
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

@@ -6,6 +6,7 @@ from loguru import logger
 
 from .config import settings
 from .redis_client import get_redis
+from .metrics import risk_checks_total, risk_rejections_total
 
 router = APIRouter()
 
@@ -32,6 +33,7 @@ async def pre_trade_check(data: dict):
     strategy_name = signal.get("strategy_name", "")
 
     r = await get_redis()
+    risk_checks_total.inc()
 
     # 1. 交易时间检查
     if not is_trading_time():
@@ -48,11 +50,12 @@ async def pre_trade_check(data: dict):
         checks_passed.append("t_plus_one")
 
     # 3. 单股仓位检查
-    if position_pct > settings.max_single_stock_pct:
+    max_single = await _get_setting("max_single_stock_pct", settings.max_single_stock_pct)
+    if position_pct > max_single:
         checks_failed.append(
-            f"单股仓位超限: {position_pct*100}% > {settings.max_single_stock_pct*100}%"
+            f"单股仓位超限: {position_pct*100}% > {max_single*100}%"
         )
-        adjustments["max_position_pct"] = settings.max_single_stock_pct
+        adjustments["max_position_pct"] = max_single
     else:
         checks_passed.append("position_limit")
 
@@ -77,10 +80,11 @@ async def pre_trade_check(data: dict):
     total_equity = float(await r.get("account:total_equity") or 1)
 
     if total_equity > 0:
+        daily_loss_limit = await _get_setting("daily_loss_limit_pct", settings.daily_loss_limit_pct)
         daily_loss_pct = abs(daily_pnl) / total_equity if daily_pnl < 0 else 0
-        if daily_loss_pct >= settings.daily_loss_limit_pct:
+        if daily_loss_pct >= daily_loss_limit:
             checks_failed.append(
-                f"日亏损触及上限: {daily_loss_pct*100:.1f}% >= {settings.daily_loss_limit_pct*100}%"
+                f"日亏损触及上限: {daily_loss_pct*100:.1f}% >= {daily_loss_limit*100}%"
             )
             await trigger_circuit_breaker(r, "daily_loss_limit",
                                           f"日亏损{daily_loss_pct*100:.1f}%触发上限")
@@ -108,9 +112,22 @@ async def pre_trade_check(data: dict):
     }
 
 
+async def _get_setting(key: str, default: float) -> float:
+    """读取 Redis 设置覆盖值 (settings:key), 无覆盖时用环境配置默认值"""
+    r = await get_redis()
+    try:
+        val = await r.get(f"settings:{key}")
+        if val is None:
+            return default
+        return float(val)
+    except (TypeError, ValueError):
+        return default
+
+
 def _reject(passed: list, failed: list, reason: str) -> dict:
     """构造拒绝响应"""
     logger.warning(f"风控拒绝: {reason}")
+    risk_rejections_total.inc()
     return {
         "approved": False,
         "adjustments": {},
@@ -166,10 +183,10 @@ async def risk_status():
         "total_equity": total_equity,
         "daily_loss_pct": abs(daily_pnl) / total_equity * 100 if total_equity > 0 and daily_pnl < 0 else 0,
         "limits": {
-            "max_single_stock": settings.max_single_stock_pct,
-            "max_sector": settings.max_sector_pct,
-            "daily_loss_limit": settings.daily_loss_limit_pct,
-            "max_drawdown": settings.max_drawdown_pct,
+            "max_single_stock": await _get_setting("max_single_stock_pct", settings.max_single_stock_pct),
+            "max_sector": await _get_setting("max_sector_pct", settings.max_sector_pct),
+            "daily_loss_limit": await _get_setting("daily_loss_limit_pct", settings.daily_loss_limit_pct),
+            "max_drawdown": await _get_setting("max_drawdown_pct", settings.max_drawdown_pct),
         },
     }
 

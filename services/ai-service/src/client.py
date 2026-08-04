@@ -7,6 +7,7 @@ import httpx
 from loguru import logger
 
 from .config import settings
+from .metrics import ai_calls, ai_tokens, ai_cost
 
 
 class DeepSeekClient:
@@ -69,6 +70,11 @@ class DeepSeekClient:
             tokens = usage.get("total_tokens", 0)
             self.daily_tokens += tokens
             self._rpm_window.append(time.time())
+
+            # Prometheus 指标
+            ai_calls.inc()
+            ai_tokens.inc(tokens)
+            ai_cost.set(round(self.daily_tokens / 1_000_000 * 0.2, 4))
 
             return data
         except Exception as e:

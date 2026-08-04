@@ -15,8 +15,12 @@ from datetime import datetime, date
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from loguru import logger
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 import redis.asyncio as aioredis
+
+from metrics import orders_total, pnl_daily, total_equity, positions_value
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379")
 
@@ -59,10 +63,14 @@ async def init():
 
 # ============ 信号订阅 & 自动执行 ============
 async def subscribe_signals():
-    """订阅策略信号, 自动下单"""
+    """订阅策略信号, 自动下单
+
+    signal:new      — 策略管道产生的原始信号 (requires_confirmation=True 时需人工批准)
+    signal:approved — 人工/系统批准后的执行信号 (requires_confirmation=False, 直接执行)
+    """
     pubsub = rdb.pubsub()
-    await pubsub.subscribe("signal:new")
-    logger.info("监听信号频道: signal:new")
+    await pubsub.subscribe("signal:new", "signal:approved")
+    logger.info("监听信号频道: signal:new / signal:approved")
 
     async for msg in pubsub.listen():
         if msg["type"] != "message":
@@ -151,6 +159,7 @@ async def execute_signal(signal: dict) -> dict:
         "timestamp": datetime.now().isoformat(),
     }
     orders[order_id] = order
+    orders_total.labels(action).inc()  # Prometheus 指标
 
     # 更新账户资金
     cash = float(await rdb.get("account:available_cash") or 0)
@@ -220,6 +229,11 @@ async def recalculate_equity():
     pnl = equity - initial
     await rdb.set(f"pnl:daily:{today}", str(round(pnl, 2)))
 
+    # Prometheus 指标
+    total_equity.set(round(equity, 2))
+    pnl_daily.set(round(pnl, 2))
+    positions_value.set(round(sum(p.get("market_value", 0) for p in positions.values()), 2))
+
 
 # ============ REST API ============
 @asynccontextmanager
@@ -230,6 +244,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="AI炒股-执行引擎", lifespan=lifespan)
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus 指标"""
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/health")

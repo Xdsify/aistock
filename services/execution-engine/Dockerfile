@@ -1,19 +1,13 @@
-FROM golang:1.22-alpine AS builder
+FROM python:3.11-slim
 
 WORKDIR /app
 
-RUN apk add --no-cache git
+ENV PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
 
-COPY go.mod ./
-COPY go.sum* ./
-RUN go mod download 2>/dev/null || go mod tidy
-RUN go mod download
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-RUN CGO_ENABLED=0 go build -o /execution-engine ./cmd/server
 
-FROM alpine:3.19
-RUN apk add --no-cache ca-certificates curl
-COPY --from=builder /execution-engine /usr/local/bin/execution-engine
 EXPOSE 9001
-CMD ["execution-engine"]
+CMD ["python", "main.py"]

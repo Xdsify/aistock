@@ -1,7 +1,9 @@
 """AI分析服务 - 主入口"""
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.responses import Response
 from loguru import logger
+from prometheus_client import generate_latest, CONTENT_TYPE_LATEST
 
 from .config import settings
 from .client import deepseek_client
@@ -38,3 +40,9 @@ async def health_check():
         "model": settings.default_model,
         "daily_tokens_used": deepseek_client.daily_tokens,
     }
+
+
+@app.get("/metrics")
+async def metrics():
+    """Prometheus 指标"""
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
