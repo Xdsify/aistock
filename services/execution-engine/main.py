@@ -35,6 +35,19 @@ orders: dict[str, dict] = {}
 signals_log: list[dict] = []
 trades: list = []  # 已实现成交记录 (供胜率/盈亏比统计)
 
+
+def is_trading_time() -> bool:
+    """是否在A股交易时段 (周一至周五 9:30-11:30, 13:00-15:00)"""
+    now = datetime.now()
+    if now.weekday() >= 5:
+        return False
+    t = now.hour * 60 + now.minute
+    morning = 9 * 60 + 30
+    noon_end = 11 * 60 + 30
+    afternoon = 13 * 60
+    close = 15 * 60
+    return (morning <= t <= noon_end) or (afternoon <= t <= close)
+
 # ============ 初始化 ============
 async def init():
     global rdb
@@ -120,6 +133,11 @@ async def execute_signal(signal: dict) -> dict:
     price = signal.get("price", 0)
     volume = signal.get("volume", 0)
     position_pct = signal.get("position_pct", 0.1)
+
+    # 交易时段检查 (ENFORCE_TRADING_HOURS=false 可关闭, 便于学习测试)
+    if os.getenv("ENFORCE_TRADING_HOURS", "true").lower() in ("1", "true", "yes"):
+        if not is_trading_time():
+            return {"success": False, "error": "非交易时间，拒绝下单"}
 
     if price <= 0:
         return {"success": False, "error": "价格无效"}

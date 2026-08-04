@@ -1,6 +1,13 @@
 import { useState } from 'react';
-import { ShoppingCart, Send } from 'lucide-react';
+import { ShoppingCart, Send, Clock } from 'lucide-react';
 import { useMarketStore } from '../stores/marketStore';
+
+function isTradingTime(now: Date): boolean {
+  const day = now.getDay(); // 0=周日
+  if (day === 0 || day === 6) return false;
+  const t = now.getHours() * 60 + now.getMinutes();
+  return (9 * 60 + 30 <= t && t <= 11 * 60 + 30) || (13 * 60 <= t && t <= 15 * 60);
+}
 
 export default function ManualTrade() {
   const [symbol, setSymbol] = useState('000001.SZ');
@@ -12,6 +19,7 @@ export default function ManualTrade() {
   const [loading, setLoading] = useState(false);
   const quotes = useMarketStore((s) => s.quotes);
   const livePrice = quotes[symbol]?.price;
+  const trading = isTradingTime(new Date());
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -54,6 +62,14 @@ export default function ManualTrade() {
         <ShoppingCart className="w-6 h-6 text-blue-400" /> 手动交易
       </h1>
       <p className="text-sm text-gray-500">直接下买单/卖单（模拟成交，T+1 当天买入不可卖）</p>
+
+      {!trading && (
+        <div className="bg-yellow-900/30 border border-yellow-600/30 rounded-xl p-3 flex items-center gap-2 text-sm text-yellow-400">
+          <Clock className="w-4 h-4 shrink-0" />
+          当前非交易时段（A股 9:30-11:30 / 13:00-15:00，周一至周五），下单会被拒绝。
+          如需测试可把 .env 的 ENFORCE_TRADING_HOURS 设为 false 并重启。
+        </div>
+      )}
 
       <form onSubmit={submit} className="bg-gray-900 rounded-xl border border-gray-800 p-6 space-y-4">
         <div>

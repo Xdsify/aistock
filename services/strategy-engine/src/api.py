@@ -1,5 +1,6 @@
 """策略引擎API路由"""
 import json
+import os
 import uuid
 from datetime import datetime
 from typing import Optional
@@ -62,6 +63,15 @@ class SignalRejectRequest(BaseModel):
     signal_id: str
     symbol: str
     strategy_name: str = ""
+
+
+def _is_trading_time() -> bool:
+    """是否在A股交易时段"""
+    now = datetime.now()
+    if now.weekday() >= 5:
+        return False
+    t = now.hour * 60 + now.minute
+    return (9 * 60 + 30 <= t <= 11 * 60 + 30) or (13 * 60 <= t <= 15 * 60)
 
 
 @router.get("/list")
@@ -243,6 +253,10 @@ async def approve_signal(req: SignalApproveRequest):
 @router.post("/signal/quick-buy")
 async def quick_buy(req: QuickBuyRequest):
     """一键买入 (从AI选股页面直接下单)"""
+    # 交易时段检查 (ENFORCE_TRADING_HOURS=false 可关闭)
+    if os.getenv("ENFORCE_TRADING_HOURS", "true").lower() in ("1", "true", "yes"):
+        if not _is_trading_time():
+            raise HTTPException(400, "非交易时间，拒绝下单")
     r = await _get_redis()
 
     exec_signal = {

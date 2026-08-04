@@ -73,6 +73,7 @@ services:
     environment:
       DATABASE_URL: postgresql://aistock:${DB_PASSWORD}@postgres:5432/aistock
       REDIS_URL: redis://redis:6379
+      ENFORCE_TRADING_HOURS: ${ENFORCE_TRADING_HOURS:-true}
     volumes:
       - ./services/strategy-engine/src:/app/src
       - ./strategies:/app/user_strategies
@@ -129,6 +130,7 @@ services:
     environment:
       DATABASE_URL: postgresql://aistock:${DB_PASSWORD}@postgres:5432/aistock
       REDIS_URL: redis://redis:6379
+      ENFORCE_TRADING_HOURS: ${ENFORCE_TRADING_HOURS:-true}
     volumes:
       - ./services/execution-engine:/app
     restart: unless-stopped
