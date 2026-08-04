@@ -27,6 +27,8 @@ React前端 ←→ Go API网关(WebSocket+REST) ←→ Redis Pub/Sub ←→ 微�
 
 ## 快速开始
 
+> 📖 完整使用教程见 [docs/usage.md](docs/usage.md)（含启动方式、前端各页面说明、故障排查、如何添加策略）
+
 ```bash
 # 1. 配置环境
 cp .env.example .env
