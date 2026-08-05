@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Brain, TrendingUp, AlertTriangle, Clock, Zap, Activity } from 'lucide-react';
 import { useMarketStore } from '../stores/marketStore';
+import StockLink from '../components/StockLink';
 
 interface StockPick {
   symbol: string;
@@ -196,7 +197,7 @@ export default function AIScreener() {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="font-mono font-bold text-lg">{pick.symbol}</span>
-                        <span className="text-gray-300">{pick.name}</span>
+                        <span className="text-gray-300"><StockLink symbol={pick.symbol} name={pick.name} /></span>
                       </div>
                       <div className="flex items-center gap-3 mt-1">
                         <span className={`text-xs px-2 py-0.5 rounded ${riskBg[pick.risk_level]} ${riskColor[pick.risk_level]}`}>

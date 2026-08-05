@@ -21,6 +21,7 @@ import Strategies from './pages/Strategies';
 import AIScreener from './pages/AIScreener';
 import ManualTrade from './pages/ManualTrade';
 import LimitUp from './pages/LimitUp';
+import StockDetail from './pages/StockDetail';
 import LoginPage from './pages/Login';
 
 export default function App() {
@@ -67,6 +68,7 @@ export default function App() {
           <Route path="/strategies" element={<Strategies />} />
           <Route path="/ai-screener" element={<AIScreener />} />
           <Route path="/limit-up" element={<LimitUp />} />
+          <Route path="/stock/:symbol" element={<StockDetail />} />
           <Route path="/risk" element={<RiskMonitor />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>

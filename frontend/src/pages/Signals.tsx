@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Zap, Check, X, Eye, Brain } from 'lucide-react';
 import { useSignalStore } from '../stores/signalStore';
 import { useWebSocket } from '../hooks/useWebSocket';
+import StockLink from '../components/StockLink';
 
 export default function Signals() {
   useWebSocket();
@@ -89,7 +90,7 @@ function SignalCard({
 
           {/* 股票代码 */}
           <div>
-            <span className="font-mono font-bold">{signal.symbol}</span>
+            <span className="font-mono font-bold"><StockLink symbol={signal.symbol} /></span>
             <span className="text-xs text-gray-500 ml-2">{signal.strategy_name}</span>
           </div>
 

@@ -100,6 +100,12 @@ func main() {
 	api.Get("/stocks/:symbol/kline", func(c *fiber.Ctx) error {
 		return proxyRequest(c, "http://data-service:8001/api/data/kline/"+c.Params("symbol"))
 	})
+	api.Get("/data/kline/:symbol", func(c *fiber.Ctx) error {
+		return proxyRequest(c, "http://data-service:8001/api/data/kline/"+c.Params("symbol"))
+	})
+	api.Get("/data/quote/:symbol", func(c *fiber.Ctx) error {
+		return proxyRequest(c, "http://data-service:8001/api/data/quote/"+c.Params("symbol"))
+	})
 
 	api.Get("/strategies", proxyHandler("http://strategy-engine:8002/api/strategy/list"))
 	api.Post("/strategies/activate", proxyHandler("http://strategy-engine:8002/api/strategy/activate"))

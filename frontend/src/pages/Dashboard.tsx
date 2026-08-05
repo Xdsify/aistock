@@ -6,6 +6,7 @@ import { useSignalStore } from '../stores/signalStore';
 import { TrendingUp, TrendingDown, DollarSign, Activity, ShieldAlert } from 'lucide-react';
 import PnLCard from '../components/PnLCard';
 import EquityChart from '../components/EquityChart';
+import StockLink from '../components/StockLink';
 
 export default function Dashboard() {
   useWebSocket();
@@ -145,8 +146,10 @@ function QuotesBar() {
       <h3 className="text-sm font-semibold mb-3 text-gray-400">实时行情</h3>
       <div className="flex gap-3 overflow-x-auto">
         {list.map((q: any) => (
-          <div key={q.symbol} className="min-w-[110px] bg-gray-800 rounded-lg p-2 shrink-0">
-            <div className="text-xs text-gray-400 truncate">{q.name || q.symbol}</div>
+          <div key={q.symbol} className="min-w-[110px] bg-gray-800 rounded-lg p-2 shrink-0 hover:bg-gray-700 transition-colors">
+            <div className="text-xs text-gray-400 truncate">
+              <StockLink symbol={q.symbol} name={q.name} />
+            </div>
             <div className="font-mono text-sm">{q.price}</div>
             <div className={`text-xs ${q.change_pct >= 0 ? 'text-up' : 'text-down'}`}>
               {q.change_pct >= 0 ? '+' : ''}{q.change_pct}%

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { TrendingUp, TrendingDown, Lock, Unlock } from 'lucide-react';
 import { usePositionStore } from '../stores/positionStore';
 import { useStockNames } from '../hooks/useStockNames';
+import StockLink from '../components/StockLink';
 
 interface Position {
   symbol: string;
@@ -98,7 +99,9 @@ export default function Positions() {
             {positions.map((pos) => (
               <tr key={pos.symbol} className="border-b border-gray-800 hover:bg-gray-800/50">
                 <td className="p-3">
-                  <div className="font-medium">{pos.name || stockNames[pos.symbol] || pos.symbol}</div>
+                  <div className="font-medium">
+                    <StockLink symbol={pos.symbol} name={pos.name || stockNames[pos.symbol] || pos.symbol} />
+                  </div>
                   <div className="text-xs text-gray-500">{pos.symbol}</div>
                 </td>
                 <td className="p-3 text-right">

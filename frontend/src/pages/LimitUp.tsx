@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Flame, CalendarDays, AlertTriangle } from 'lucide-react';
+import StockLink from '../components/StockLink';
 
 interface PoolItem {
   symbol: string;
@@ -154,7 +155,7 @@ export default function LimitUp() {
               {filtered.map((p) => (
                 <tr key={p.symbol} className="border-b border-gray-800 hover:bg-gray-800/50">
                   <td className="p-3">
-                    <div className="font-medium">{p.name}</div>
+                    <div className="font-medium"><StockLink symbol={p.symbol} name={p.name} /></div>
                     <div className="text-xs text-gray-500">{p.symbol}</div>
                   </td>
                   <td className="p-3 text-right font-mono">{p.price.toFixed(2)}</td>

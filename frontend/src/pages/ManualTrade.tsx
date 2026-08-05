@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ShoppingCart, Send, Clock } from 'lucide-react';
 import { useMarketStore } from '../stores/marketStore';
 import { useStockNames } from '../hooks/useStockNames';
+import StockLink from '../components/StockLink';
 
 function isTradingTime(now: Date): boolean {
   const day = now.getDay(); // 0=周日
@@ -89,6 +90,9 @@ export default function ManualTrade() {
               股票: <span className="text-white">{stockName}</span>
             </div>
           )}
+          <div className="text-xs text-blue-400 mt-1">
+            <StockLink symbol={symbol} name="查看K线详情 →" />
+          </div>
         </div>
 
         <div>

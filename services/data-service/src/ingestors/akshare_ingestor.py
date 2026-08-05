@@ -1,4 +1,5 @@
 """AKShare数据采集器"""
+import asyncio
 from datetime import date, datetime, timedelta
 from typing import Optional
 import pandas as pd
@@ -47,36 +48,55 @@ class AKShareIngestor:
     def _sync_get_kline_raw(
         self, symbol: str, start_date: str, end_date: str, adjust: str = "qfq"
     ) -> Optional[pd.DataFrame]:
-        """同步获取日线K线 (线程安全,不碰Redis)"""
+        """同步获取日线K线 (线程安全,不碰Redis)
+
+        优先 eastmoney (stock_zh_a_hist), 失败回退 sina (stock_zh_a_daily)。
+        某些网络下 eastmoney 的 K 线接口不可达, 但 sina 可用。
+        """
+        import akshare as ak
+        code = symbol.split(".")[0]
+        df = None
+
+        # 1) eastmoney
         try:
-            import akshare as ak
             df = ak.stock_zh_a_hist(
-                symbol=symbol,
+                symbol=code,
                 period="daily",
                 start_date=start_date,
                 end_date=end_date,
                 adjust=adjust,
             )
-            if df is None or df.empty:
-                return None
+            if df is not None and not df.empty:
+                df = df.rename(columns={
+                    "日期": "trade_date", "开盘": "open", "收盘": "close",
+                    "最高": "high", "最低": "low", "成交量": "volume", "成交额": "amount",
+                })
+                df["trade_date"] = pd.to_datetime(df["trade_date"])
+        except Exception:
+            df = None
 
-            # 标准化列名
-            df = df.rename(columns={
-                "日期": "trade_date",
-                "开盘": "open",
-                "收盘": "close",
-                "最高": "high",
-                "最低": "low",
-                "成交量": "volume",
-                "成交额": "amount",
-            })
+        # 2) sina 兜底
+        if df is None or df.empty:
+            try:
+                sina_symbol = ("sh" if code.startswith(("6", "9")) else "sz") + code
+                df = ak.stock_zh_a_daily(symbol=sina_symbol, adjust=adjust or "")
+                if df is not None and not df.empty:
+                    df = df.rename(columns={"date": "trade_date"})
+                    df["trade_date"] = pd.to_datetime(df["trade_date"])
+                    start = pd.to_datetime(start_date)
+                    end = pd.to_datetime(end_date)
+                    df = df[(df["trade_date"] >= start) & (df["trade_date"] <= end)]
+                    if "amount" not in df.columns:
+                        df["amount"] = 0
+            except Exception as e:
+                logger.error(f"sina获取{symbol}日线失败: {e}")
+                df = None
 
-            df["trade_date"] = pd.to_datetime(df["trade_date"])
-            df["symbol"] = self._format_symbol(symbol)
-            return df
-        except Exception as e:
-            logger.error(f"获取{symbol}日线失败: {e}")
-            raise
+        if df is None or df.empty:
+            return None
+
+        df["symbol"] = self._format_symbol(symbol)
+        return df
 
     async def get_realtime_quote(self, symbol: str) -> Optional[dict]:
         """获取实时行情 (通过AKShare或缓存)"""
