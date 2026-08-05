@@ -92,6 +92,7 @@ func main() {
 
 	api.Get("/market/sentiment", proxyHandler("http://data-service:8001/api/data/market/sentiment"))
 	api.Get("/data/market/sentiment", proxyHandler("http://data-service:8001/api/data/market/sentiment"))
+	api.Get("/data/market/ztpool", proxyHandler("http://data-service:8001/api/data/market/ztpool"))
 	api.Get("/data/stock/list", proxyHandler("http://data-service:8001/api/data/stock/list"))
 	api.Get("/market/quotes", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"message": "use WebSocket for real-time quotes"})

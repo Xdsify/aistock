@@ -1,6 +1,7 @@
 """数据服务API路由"""
 from fastapi import APIRouter, Query
 from typing import Optional
+from loguru import logger
 
 from ..ingestors.akshare_ingestor import akshare
 
@@ -121,6 +122,27 @@ async def get_screening_data():
     data = await loop.run_in_executor(None, fetch_screening_data)
     await rdb.setex("market:screening", 1800, _json.dumps(data, ensure_ascii=False))
     return {"source": "live", "data": data}
+
+
+@router.get("/market/ztpool")
+async def get_zt_pool(date: str = None):
+    """涨停股池 (首板/连板, 类似同花顺) — AKShare 不可用时返回示例数据"""
+    import asyncio as _asyncio
+    from datetime import date as _date, timedelta as _td
+    from ..ingestors.screener_data import fetch_zt_pool, mock_zt_pool
+
+    if not date:
+        d = _date.today()
+        while d.weekday() >= 5:
+            d -= _td(days=1)
+        date = d.strftime("%Y%m%d")
+
+    loop = _asyncio.get_event_loop()
+    try:
+        return await loop.run_in_executor(None, fetch_zt_pool, date)
+    except Exception as e:
+        logger.warning(f"涨停池获取失败({e}), 使用示例数据")
+        return mock_zt_pool(date)
 
 
 @router.post("/ai/screen")

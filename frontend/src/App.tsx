@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Routes, Route, NavLink } from 'react-router-dom';
 import {
   Activity, ShieldAlert, Settings, Briefcase,
-  Zap, BarChart3, Brain, Wifi, WifiOff, LogOut, ArrowRightLeft
+  Zap, BarChart3, Brain, Wifi, WifiOff, LogOut, ArrowRightLeft, Flame
 } from 'lucide-react';
 import { useWebSocket } from './hooks/useWebSocket';
 import { usePositionStore } from './stores/positionStore';
@@ -20,6 +20,7 @@ import Signals from './pages/Signals';
 import Strategies from './pages/Strategies';
 import AIScreener from './pages/AIScreener';
 import ManualTrade from './pages/ManualTrade';
+import LimitUp from './pages/LimitUp';
 import LoginPage from './pages/Login';
 
 export default function App() {
@@ -48,6 +49,7 @@ export default function App() {
           <NavItem to="/trade" icon={ArrowRightLeft} label="手动交易" />
           <NavItem to="/strategies" icon={BarChart3} label="策略管理" />
           <NavItem to="/ai-screener" icon={Brain} label="AI 选股" />
+          <NavItem to="/limit-up" icon={Flame} label="涨停分析" />
           <NavItem to="/risk" icon={ShieldAlert} label="风控监控" />
           <NavItem to="/settings" icon={Settings} label="系统设置" />
         </div>
@@ -64,6 +66,7 @@ export default function App() {
           <Route path="/trade" element={<ManualTrade />} />
           <Route path="/strategies" element={<Strategies />} />
           <Route path="/ai-screener" element={<AIScreener />} />
+          <Route path="/limit-up" element={<LimitUp />} />
           <Route path="/risk" element={<RiskMonitor />} />
           <Route path="/settings" element={<SettingsPage />} />
         </Routes>
