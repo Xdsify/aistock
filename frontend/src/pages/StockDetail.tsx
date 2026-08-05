@@ -58,7 +58,12 @@ export default function StockDetail() {
   useEffect(() => {
     setLoading(true);
     setError('');
-    fetch(`/api/data/kline/${symbol}?start_date=20250101&end_date=20261231`)
+    // 默认拉近一年 (范围更小, 加载更快)
+    const now = new Date();
+    const start = new Date();
+    start.setFullYear(now.getFullYear() - 1);
+    const fmt = (d: Date) => `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+    fetch(`/api/data/kline/${symbol}?start_date=${fmt(start)}&end_date=${fmt(now)}`)
       .then((r) => r.ok ? r.json() : null)
       .then((d) => {
         if (d?.data?.length) setKlines(d.data);

@@ -34,18 +34,46 @@ async def get_kline(
     start_date: str = Query(None, description="起始日期 YYYYMMDD"),
     end_date: str = Query(None, description="截止日期 YYYYMMDD"),
 ):
-    """获取K线数据"""
-    data = await akshare.get_daily_kline(
-        symbol, start_date or "20200101", end_date or "20261231"
-    )
-    if data is None:
-        return {"error": "获取K线失败", "symbol": symbol}
-    return {
+    """获取K线数据 (结果缓存 6 小时, 避免反复拉慢速数据源)"""
+    import asyncio as _asyncio
+    import json as _json
+
+    start = start_date or "20200101"
+    end = end_date or "20261231"
+    cache_key = f"kline:api:{symbol}:{period}:{start}:{end}"
+
+    rdb = await _rdb()
+    cached = await rdb.get(cache_key)
+    if cached:
+        try:
+            return _json.loads(cached)
+        except Exception:
+            pass
+
+    loop = _asyncio.get_event_loop()
+    try:
+        data = await _asyncio.wait_for(
+            loop.run_in_executor(None, akshare._sync_get_kline_raw, symbol, start, end),
+            timeout=20,
+        )
+    except Exception:
+        data = None
+
+    if data is None or data.empty:
+        return {"error": "获取K线失败(行情服务不可用)", "symbol": symbol}
+
+    # trade_date 转字符串, 保证 json 可序列化
+    df = data.copy()
+    df["trade_date"] = df["trade_date"].dt.strftime("%Y-%m-%d")
+
+    result = {
         "symbol": symbol,
         "period": period,
-        "count": len(data),
-        "data": data.to_dict(orient="records"),
+        "count": len(df),
+        "data": df.to_dict(orient="records"),
     }
+    await rdb.setex(cache_key, 6 * 3600, _json.dumps(result, ensure_ascii=False))
+    return result
 
 
 @router.get("/market/sentiment")
@@ -69,8 +97,20 @@ async def get_north_flow():
 
 @router.get("/stock/list")
 async def get_stock_list(exchange: Optional[str] = None):
-    """获取股票列表"""
-    stocks = await akshare.get_stock_list()
+    """获取股票列表 (线程池执行 + 超时, 避免阻塞事件循环影响其他接口)"""
+    import asyncio as _asyncio
+    loop = _asyncio.get_event_loop()
+    try:
+        stocks = await _asyncio.wait_for(
+            loop.run_in_executor(None, akshare._sync_get_stock_list),
+            timeout=8,
+        )
+    except Exception:
+        stocks = None
+
+    if stocks is None or stocks.empty:
+        return {"count": 0, "stocks": []}
+
     if exchange:
         if exchange == "SZ":
             stocks = stocks[stocks["symbol"].str.startswith(("0", "3"))]

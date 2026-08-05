@@ -1,11 +1,15 @@
 """AKShare数据采集器"""
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
 from typing import Optional
 import pandas as pd
 from loguru import logger
 
 from ..storage import redis_client as _redis
+
+# 用于限时运行可能挂死的 AKShare 同步调用 (eastmoney 在部分网络会长时间卡住)
+_KLINE_POOL = ThreadPoolExecutor(max_workers=4)
 
 
 class AKShareIngestor:
@@ -14,19 +18,20 @@ class AKShareIngestor:
     CACHE_TTL = 60  # 实时行情缓存60秒
 
     async def get_stock_list(self) -> pd.DataFrame:
-        """获取A股股票列表"""
-        try:
-            import akshare as ak
-            df = ak.stock_info_a_code_name()
-            df = df.rename(columns={
-                "code": "symbol",
-                "name": "name",
-            })
-            logger.info(f"获取股票列表: {len(df)} 只")
-            return df
-        except Exception as e:
-            logger.error(f"获取股票列表失败: {e}")
-            raise
+        """获取A股股票列表 (同步调用放线程池, 避免阻塞事件循环)"""
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(None, self._sync_get_stock_list)
+
+    def _sync_get_stock_list(self) -> pd.DataFrame:
+        """同步获取A股股票列表 (线程安全,不碰Redis)"""
+        import akshare as ak
+        df = ak.stock_info_a_code_name()
+        df = df.rename(columns={
+            "code": "symbol",
+            "name": "name",
+        })
+        logger.info(f"获取股票列表: {len(df)} 只")
+        return df
 
     async def get_daily_kline(
         self, symbol: str, start_date: str, end_date: str,
@@ -57,15 +62,14 @@ class AKShareIngestor:
         code = symbol.split(".")[0]
         df = None
 
-        # 1) eastmoney
+        # 1) eastmoney (限时 3s, 超时/失败直接放弃, 防止挂死整个请求)
         try:
-            df = ak.stock_zh_a_hist(
-                symbol=code,
-                period="daily",
-                start_date=start_date,
-                end_date=end_date,
-                adjust=adjust,
+            future = _KLINE_POOL.submit(
+                ak.stock_zh_a_hist,
+                symbol=code, period="daily",
+                start_date=start_date, end_date=end_date, adjust=adjust,
             )
+            df = future.result(timeout=3)
             if df is not None and not df.empty:
                 df = df.rename(columns={
                     "日期": "trade_date", "开盘": "open", "收盘": "close",
@@ -75,14 +79,20 @@ class AKShareIngestor:
         except Exception:
             df = None
 
-        # 2) sina 兜底
+        # 2) sina 兜底 (直接传日期范围, 避免拉全量历史)
         if df is None or df.empty:
             try:
                 sina_symbol = ("sh" if code.startswith(("6", "9")) else "sz") + code
-                df = ak.stock_zh_a_daily(symbol=sina_symbol, adjust=adjust or "")
+                df = ak.stock_zh_a_daily(
+                    symbol=sina_symbol,
+                    start_date=start_date,
+                    end_date=end_date,
+                    adjust=adjust or "",
+                )
                 if df is not None and not df.empty:
                     df = df.rename(columns={"date": "trade_date"})
                     df["trade_date"] = pd.to_datetime(df["trade_date"])
+                    # 再兜底过滤一次日期范围
                     start = pd.to_datetime(start_date)
                     end = pd.to_datetime(end_date)
                     df = df[(df["trade_date"] >= start) & (df["trade_date"] <= end)]
