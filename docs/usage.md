@@ -20,7 +20,12 @@ React前端(3000) ←→ Go API网关(8080 REST + 8081 WebSocket) ←→ Redis P
 
 ## 二、启动系统
 
-### 方式 A：Docker 部署（推荐）
+### 方式 A：Docker 一键启动（推荐）
+
+**双击 `start.bat`**：自动拉起 Docker Desktop → 启动全部服务 → 等待就绪 → 自动打开前端 `http://localhost:3000`。
+首次运行需拉取镜像，可能要等几分钟。
+
+命令行手动启动（等价于 start.bat 做的）：
 
 ```bash
 # 1. 配置环境变量
@@ -38,10 +43,11 @@ docker compose down          # 保留数据
 docker compose down -v       # 连数据一起清掉
 ```
 
-### 方式 B：开发模式（Windows，热重载）
-双击 `start.bat` 会开多个 cmd 窗口分别跑各服务。
+### 方式 B：开发模式（Windows，本地热重载）
+> ⚠️ 需要本机安装 Go 1.22+（API 网关是 Go 服务），且需把网关代理地址改成 localhost。
+> 旧脚本保留在 `start.bat.local`，供参考。
 
-> 开发模式用 Vite 代理直连各服务，**绕过网关鉴权**；Docker 模式统一走网关（需登录）。
+日常使用请直接双击 `start.bat`（方式 A）。
 
 ### 登录
 打开 `http://localhost:3000` → 账号 **admin** / 密码 **admin123**（生产务必改 `ADMIN_PASSWORD`）。
@@ -174,6 +180,7 @@ DeepSeek 扫全市场选股 + 市场判断 + 操作策略；每只结果有「�
 
 | 现象 | 处理 |
 |------|------|
+| 双击 start.bat 没反应/报错 | 确认 Docker Desktop 已安装并启动；start.bat 是 Docker 一键启动，不再依赖本机 Go/Python |
 | 前端打不开 / 登录不了 | `docker compose ps` 看 frontend/gateway 是否 Up；确认账号密码 |
 | 页面数据空 | 多数是**行情网络不通**（AKShare）；`docker logs aistock-data` 看采集日志 |
 | K线加载慢 | 首次约 6 秒（sina 源），之后秒开（Redis 缓存）；长时间不加载看 `docker logs aistock-data` |
